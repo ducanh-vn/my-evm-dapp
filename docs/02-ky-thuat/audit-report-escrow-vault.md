@@ -6,7 +6,7 @@
 - **Ngày:** 2026-11-22
 - **Người thực hiện:** Claude (vai trò Lead Smart Contract Security Auditor theo `.claude/agents/security-auditor.md`)
 - **Loại audit:** Rà soát nội bộ trước audit chính thức. **Không thay thế** audit độc lập của bên thứ ba trước khi lên Mainnet.
-- **Trạng thái:** M-1 **đã sửa** (phần chính, xem mục M-1). Các mục L/G còn lại chưa sửa, chờ chủ dự án quyết định.
+- **Trạng thái:** M-1 **đã sửa** (cả hai chiều), L-1 **đã sửa** (phần phí), L-3 **đã sửa**. Các mục L-2, L-4, L-5, L-6, G-1, G-2, G-3 chưa sửa.
 
 ---
 
@@ -17,7 +17,7 @@
 | `[CRITICAL]` | 0 |
 | `[HIGH]` | 0 |
 | `[MEDIUM]` | 1 (đã sửa) |
-| `[LOW/GAS]` | 9 (6 Low / Info, 3 Gas) |
+| `[LOW/GAS]` | 9 (6 Low / Info, 3 Gas) — L-1, L-3 đã sửa |
 
 Không tìm thấy lỗ hổng cho phép đánh cắp tiền, rút tiền hai lần, khóa tiền vĩnh viễn, hay leo thang quyền admin. Phát hiện quan trọng nhất (M-1) là **rủi ro logic nghiệp vụ** về mốc thời gian, không phải lỗi code: contract chạy đúng đặc tả, nhưng đặc tả hiện cho phép Seller bắt đầu 3 ngày khiếu nại trước khi giao hàng thật.
 
@@ -58,7 +58,10 @@ Không tìm thấy lỗ hổng cho phép đánh cắp tiền, rút tiền hai l�
 > - Buyer `release` không đổi.
 > - Code: hàm nội bộ `_disputeWindowEnd` trong `src/EscrowVault.sol`, dùng ở `release` và `raiseDispute`.
 > - Test mới: Seller revert khi qua `disputeDeadline` nhưng chưa qua `deliveryDeadline`; trường hợp giao muộn; biên đúng mốc / mốc + 1; tái hiện kịch bản M-1 cũ (giờ revert); fuzz "đúng một trong hai hành động hợp lệ"; invariant số 8 (`invariant_NoEarlySellerRelease`).
-> - **Chưa xử lý:** chiều ngược lại (Buyer đặt `deliveryPeriod` quá ngắn rồi refund sau khi Seller đã gửi hàng). Vẫn dựa vào Frontend cảnh báo Seller gọi `markDelivered` trước khi gửi hàng, và Indexer gửi thông báo (phương án 3–4 bên dưới).
+> - **Chiều ngược lại — ĐÃ XỬ LÝ** theo quyết định của chủ dự án:
+>   - Thời hạn giao hàng tối thiểu nâng từ 1 giờ lên **1 ngày** (`MIN_DELIVERY_DURATION = 1 days`, đổi tên từ `MIN_DELIVERY_PERIOD`; `MAX_DELIVERY_PERIOD` đổi tên tương ứng thành `MAX_DELIVERY_DURATION`, vẫn 90 ngày). Seller luôn có ít nhất 1 ngày để `markDelivered`.
+>   - Quy tắc được ghi rõ và có test: Buyer chỉ `refund` khi `Funded` (Seller chưa từng `markDelivered`) và `now > deliveryDeadline`. Khi đã `Delivered`, Buyer chỉ còn `release`/`raiseDispute` (fuzz test mọi thời điểm). Hành vi này đã có từ bản đầu; lần này bổ sung test tường minh.
+>   - Rủi ro còn lại (vận hành, không phải contract): Seller phải `markDelivered` **trước** khi gửi hàng; Frontend cần nhắc rõ.
 
 **Vị trí:** `markDelivered` (dòng 166–179), `release` nhánh Seller (dòng 188–190), `refund` nhánh Buyer (dòng 215–217).
 
@@ -107,6 +110,8 @@ vault.refund(id);            // Buyer lấy lại 100%, vẫn giữ hàng
 
 ### [LOW] L-1: Thay đổi tham số admin có thể "chen ngang" giao dịch `createEscrow` đang chờ
 
+> **Trạng thái: ĐÃ SỬA (phần phí).** `createEscrow` có thêm tham số `uint16 maxFeeBps`; revert `FeeExceedsMax(current, max)` nếu `feeBps > maxFeeBps`, trước khi ghi state hay kéo tiền. Test: biên bằng nhau, nhỏ hơn 1, phí 0, ETH, và kịch bản admin đổi 1% → 5% ngay trước giao dịch của Buyer. Phần trọng tài mặc định **không** thêm tham số on-chain: Frontend phải truyền `arbiter` tường minh (đã ghi vào business-flows luồng A).
+
 **Vị trí:** `createEscrow` dòng 123, 136; `setFeeBps`, `setDefaultArbiter`.
 
 **Mô tả:** `feeBps` và `defaultArbiter` được đọc tại thời điểm giao dịch được đưa vào block. Nếu Multisig đổi phí hoặc trọng tài mặc định trong lúc giao dịch của Buyer đang chờ, escrow bị chốt giá trị mới: phí lên tới 5% thay vì 1% đã hiển thị, hoặc một trọng tài khác. Trên Base, sequencer không có mempool công khai, nên rủi ro chủ yếu là trùng thời điểm ngẫu nhiên hoặc lạm quyền tập trung, không phải bot front-run.
@@ -137,6 +142,8 @@ Seller mất hàng nếu đã giao. Seller **có** cơ hội từ chối: thông
 ---
 
 ### [LOW] L-3: Không có `withdrawTo`; ví không nhận được ETH hoặc bị blacklist USDC sẽ mất quyền rút vĩnh viễn
+
+> **Trạng thái: ĐÃ SỬA.** Thêm `withdrawTo(address token, address to)` (`nonReentrant`, không bị `pause`, revert `ZeroAddress` khi `to = 0`), dùng chung logic `_withdraw` với `withdraw`. Event đổi thành `Withdrawn(address indexed user, address indexed token, address indexed to, uint256 amount)` — **đổi ABI/topic, Indexer phải dùng chữ ký mới**. Test: ETH/ERC-20, `to = 0`, số dư 0, ví nhận từ chối ETH, cứu tiền cho Seller là contract không nhận ETH, cứu tiền cho Seller bị blacklist (mock `BlacklistERC20`), khi `paused`, không rút được của người khác, reentrancy qua `withdrawTo`.
 
 **Vị trí:** `withdraw` dòng 281–299.
 

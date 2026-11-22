@@ -16,7 +16,7 @@ contract EscrowVaultFuzzTest is BaseTest {
         vault.setFeeBps(fee);
         usdc.mint(buyer, amount);
         vm.prank(buyer);
-        id = vault.createEscrow(seller, address(usdc), amount, period, arbiter);
+        id = vault.createEscrow(seller, address(usdc), amount, period, arbiter, MAX_FEE);
     }
 
     function testFuzz_Resolve_ConservesAmount(uint256 amount, uint16 fee, uint16 buyerBps, uint48 period, uint48 wait)
@@ -25,7 +25,7 @@ contract EscrowVaultFuzzTest is BaseTest {
         amount = bound(amount, 1, 1e30);
         fee = uint16(bound(fee, 0, 500));
         buyerBps = uint16(bound(buyerBps, 0, 10_000));
-        period = uint48(bound(period, 1 hours, 90 days));
+        period = uint48(bound(period, 1 days, 90 days));
 
         uint256 id = _create(amount, fee, period);
         _dispute(id, buyer);
@@ -46,7 +46,7 @@ contract EscrowVaultFuzzTest is BaseTest {
     function testFuzz_Release_ConservesAmount(uint256 amount, uint16 fee, uint48 period, bool sellerPath) public {
         amount = bound(amount, 1, 1e30);
         fee = uint16(bound(fee, 0, 500));
-        period = uint48(bound(period, 1 hours, 90 days));
+        period = uint48(bound(period, 1 days, 90 days));
 
         uint256 id = _create(amount, fee, period);
         if (sellerPath) {
@@ -84,7 +84,7 @@ contract EscrowVaultFuzzTest is BaseTest {
         uint48 deliverAfter,
         uint48 callAfter
     ) public {
-        period = uint48(bound(period, 1 hours, 90 days));
+        period = uint48(bound(period, 1 days, 90 days));
         uint256 id = _create(AMOUNT, FEE_BPS, period);
         uint256 deliveryDeadline = vault.getEscrow(id).deliveryDeadline;
 

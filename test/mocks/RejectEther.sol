@@ -13,6 +13,10 @@ contract RejectEther {
         vault.withdraw(token);
     }
 
+    function withdrawTo(IEscrowVault vault, address token, address to) external {
+        vault.withdrawTo(token, to);
+    }
+
     receive() external payable {
         revert("no ETH");
     }

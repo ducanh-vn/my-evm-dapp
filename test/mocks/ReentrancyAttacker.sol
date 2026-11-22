@@ -12,7 +12,8 @@ contract ReentrancyAttacker {
         Release,
         Refund,
         ClaimTimeoutRefund,
-        CreateEscrow
+        CreateEscrow,
+        WithdrawTo
     }
 
     IEscrowVault public immutable vault;
@@ -31,7 +32,7 @@ contract ReentrancyAttacker {
     }
 
     function createEscrowEth(address seller, uint256 amount, address arbiter) external payable returns (uint256) {
-        return vault.createEscrow{value: amount}(seller, address(0), amount, 1 days, arbiter);
+        return vault.createEscrow{value: amount}(seller, address(0), amount, 1 days, arbiter, 500);
     }
 
     function markDelivered(uint256 id) external {
@@ -58,6 +59,8 @@ contract ReentrancyAttacker {
         uint256 value;
         if (attack == Attack.Withdraw) {
             data = abi.encodeCall(IEscrowVault.withdraw, (address(0)));
+        } else if (attack == Attack.WithdrawTo) {
+            data = abi.encodeCall(IEscrowVault.withdrawTo, (address(0), address(this)));
         } else if (attack == Attack.Release) {
             data = abi.encodeCall(IEscrowVault.release, (targetId));
         } else if (attack == Attack.Refund) {
@@ -66,7 +69,9 @@ contract ReentrancyAttacker {
             data = abi.encodeCall(IEscrowVault.claimTimeoutRefund, (targetId));
         } else {
             value = msg.value;
-            data = abi.encodeCall(IEscrowVault.createEscrow, (address(0xBEEF), address(0), value, 1 days, address(0)));
+            data = abi.encodeCall(
+                IEscrowVault.createEscrow, (address(0xBEEF), address(0), value, 1 days, address(0), 500)
+            );
         }
 
         (bool ok, bytes memory ret) = address(vault).call{value: value}(data);

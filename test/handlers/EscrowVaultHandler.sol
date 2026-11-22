@@ -136,11 +136,13 @@ contract EscrowVaultHandler is Test {
         if (buyer == seller) seller = _actor(sellerSeed + 1);
         address arb = arbSeed % 4 == 3 ? address(0) : arbiters[arbSeed % arbiters.length];
         amount = bound(amount, 1, 1e24);
-        period = uint48(bound(period, 1 hours, 90 days));
+        period = uint48(bound(period, 1 days, 90 days));
         address token = useEth ? address(0) : address(usdc);
 
         vm.prank(buyer);
-        try vault.createEscrow{value: useEth ? amount : 0}(seller, token, amount, period, arb) returns (uint256 id) {
+        try vault.createEscrow{value: useEth ? amount : 0}(seller, token, amount, period, arb, 500) returns (
+            uint256 id
+        ) {
             ids.push(id);
             ghostArbiter[id] = vault.getEscrow(id).arbiter;
             if (useEth) ghostEthEscrows++;
@@ -231,10 +233,18 @@ contract EscrowVaultHandler is Test {
 
     function withdraw(uint256 actorSeed, bool eth) external {
         address who = actorSeed % 5 == 4 ? vault.feeRecipient() : _actor(actorSeed);
+        address token = eth ? address(0) : address(usdc);
         vm.prank(who);
-        try vault.withdraw(eth ? address(0) : address(usdc)) {
-            calls["withdraw"]++;
-        } catch {}
+        if (actorSeed % 3 == 0) {
+            // Audit L-3: rút hộ sang một actor khác (vẫn là ví được theo dõi).
+            try vault.withdrawTo(token, _actor(actorSeed >> 8)) {
+                calls["withdrawTo"]++;
+            } catch {}
+        } else {
+            try vault.withdraw(token) {
+                calls["withdraw"]++;
+            } catch {}
+        }
     }
 
     function warp(uint256 secs) external {

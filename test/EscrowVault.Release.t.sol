@@ -108,7 +108,7 @@ contract EscrowVaultReleaseTest is BaseTest {
     /// @dev Kịch bản M-1 cũ: Seller khai giao ngay lúc tạo, Buyer đặt hạn 30 ngày → không rút được sau 3 ngày.
     function test_M1_PrematureMarkDeliveredNoLongerDrains() public {
         vm.prank(buyer);
-        uint256 id = vault.createEscrow(seller, address(usdc), AMOUNT, 30 days, arbiter);
+        uint256 id = vault.createEscrow(seller, address(usdc), AMOUNT, 30 days, arbiter, MAX_FEE);
         _deliver(id);
         vm.warp(vm.getBlockTimestamp() + 3 days + 1);
 

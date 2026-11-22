@@ -119,7 +119,7 @@ contract EscrowVaultAdminTest is BaseTest {
 
         vm.prank(buyer);
         vm.expectRevert(Pausable.EnforcedPause.selector);
-        vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, arbiter);
+        vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, arbiter, MAX_FEE);
 
         vm.prank(buyer);
         vault.release(a);

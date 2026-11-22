@@ -22,6 +22,8 @@ abstract contract BaseTest is Test {
 
     address internal constant ETH = address(0);
     uint16 internal constant FEE_BPS = 100;
+    /// @dev maxFeeBps mặc định trong test: chấp nhận mọi mức phí tới trần.
+    uint16 internal constant MAX_FEE = 500;
     uint48 internal constant PERIOD = 7 days;
     uint256 internal constant AMOUNT = 1_000e6;
     uint256 internal constant ETH_AMOUNT = 1 ether;
@@ -47,12 +49,12 @@ abstract contract BaseTest is Test {
 
     function _createUsdc() internal returns (uint256 id) {
         vm.prank(buyer);
-        id = vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, arbiter);
+        id = vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, arbiter, MAX_FEE);
     }
 
     function _createEth() internal returns (uint256 id) {
         vm.prank(buyer);
-        id = vault.createEscrow{value: ETH_AMOUNT}(seller, ETH, ETH_AMOUNT, PERIOD, arbiter);
+        id = vault.createEscrow{value: ETH_AMOUNT}(seller, ETH, ETH_AMOUNT, PERIOD, arbiter, MAX_FEE);
     }
 
     function _deliver(uint256 id) internal {

@@ -77,7 +77,7 @@ contract EscrowVaultCreateTest is BaseTest {
 
     function test_Create_ZeroArbiterUsesDefault_AndIsFrozen() public {
         vm.prank(buyer);
-        uint256 id = vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, address(0));
+        uint256 id = vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, address(0), MAX_FEE);
         assertEq(vault.getEscrow(id).arbiter, defaultArbiter);
 
         vm.prank(owner);
@@ -98,8 +98,8 @@ contract EscrowVaultCreateTest is BaseTest {
 
     function test_Create_DeliveryPeriodBounds() public {
         vm.startPrank(buyer);
-        vault.createEscrow(seller, address(usdc), AMOUNT, 1 hours, arbiter);
-        vault.createEscrow(seller, address(usdc), AMOUNT, 90 days, arbiter);
+        vault.createEscrow(seller, address(usdc), AMOUNT, 1 days, arbiter, MAX_FEE);
+        vault.createEscrow(seller, address(usdc), AMOUNT, 90 days, arbiter, MAX_FEE);
         vm.stopPrank();
         assertEq(vault.nextEscrowId(), 2);
     }
@@ -111,33 +111,33 @@ contract EscrowVaultCreateTest is BaseTest {
     function test_RevertWhen_AmountZero() public {
         vm.prank(buyer);
         vm.expectRevert(IEscrowVault.ZeroAmount.selector);
-        vault.createEscrow(seller, address(usdc), 0, PERIOD, arbiter);
+        vault.createEscrow(seller, address(usdc), 0, PERIOD, arbiter, MAX_FEE);
     }
 
     function test_RevertWhen_SellerZeroOrBuyer() public {
         vm.startPrank(buyer);
         vm.expectRevert(IEscrowVault.ZeroAddress.selector);
-        vault.createEscrow(address(0), address(usdc), AMOUNT, PERIOD, arbiter);
+        vault.createEscrow(address(0), address(usdc), AMOUNT, PERIOD, arbiter, MAX_FEE);
         vm.expectRevert(IEscrowVault.InvalidSeller.selector);
-        vault.createEscrow(buyer, address(usdc), AMOUNT, PERIOD, arbiter);
+        vault.createEscrow(buyer, address(usdc), AMOUNT, PERIOD, arbiter, MAX_FEE);
         vm.stopPrank();
     }
 
     function test_RevertWhen_DeliveryPeriodOutOfRange() public {
         vm.startPrank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(IEscrowVault.InvalidDeliveryPeriod.selector, uint48(1 hours - 1)));
-        vault.createEscrow(seller, address(usdc), AMOUNT, 1 hours - 1, arbiter);
+        vm.expectRevert(abi.encodeWithSelector(IEscrowVault.InvalidDeliveryPeriod.selector, uint48(1 days - 1)));
+        vault.createEscrow(seller, address(usdc), AMOUNT, 1 days - 1, arbiter, MAX_FEE);
         vm.expectRevert(abi.encodeWithSelector(IEscrowVault.InvalidDeliveryPeriod.selector, uint48(90 days + 1)));
-        vault.createEscrow(seller, address(usdc), AMOUNT, 90 days + 1, arbiter);
+        vault.createEscrow(seller, address(usdc), AMOUNT, 90 days + 1, arbiter, MAX_FEE);
         vm.stopPrank();
     }
 
     function test_RevertWhen_ArbiterIsBuyerOrSeller() public {
         vm.startPrank(buyer);
         vm.expectRevert(IEscrowVault.InvalidArbiter.selector);
-        vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, buyer);
+        vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, buyer, MAX_FEE);
         vm.expectRevert(IEscrowVault.InvalidArbiter.selector);
-        vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, seller);
+        vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, seller, MAX_FEE);
         vm.stopPrank();
     }
 
@@ -146,14 +146,14 @@ contract EscrowVaultCreateTest is BaseTest {
         vault.setDefaultArbiter(seller);
         vm.prank(buyer);
         vm.expectRevert(IEscrowVault.InvalidArbiter.selector);
-        vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, address(0));
+        vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, address(0), MAX_FEE);
     }
 
     function test_RevertWhen_TokenNotAllowed() public {
         MockERC20 other = new MockERC20();
         vm.prank(buyer);
         vm.expectRevert(abi.encodeWithSelector(IEscrowVault.TokenNotAllowed.selector, address(other)));
-        vault.createEscrow(seller, address(other), AMOUNT, PERIOD, arbiter);
+        vault.createEscrow(seller, address(other), AMOUNT, PERIOD, arbiter, MAX_FEE);
     }
 
     function test_RevertWhen_TokenRemovedFromAllowlist() public {
@@ -163,7 +163,7 @@ contract EscrowVaultCreateTest is BaseTest {
 
         vm.prank(buyer);
         vm.expectRevert(abi.encodeWithSelector(IEscrowVault.TokenNotAllowed.selector, address(usdc)));
-        vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, arbiter);
+        vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, arbiter, MAX_FEE);
 
         // Escrow cũ vẫn hoàn tất và rút được.
         vm.prank(buyer);
@@ -176,13 +176,13 @@ contract EscrowVaultCreateTest is BaseTest {
     function test_RevertWhen_EthWrongMsgValue() public {
         vm.prank(buyer);
         vm.expectRevert(abi.encodeWithSelector(IEscrowVault.InvalidMsgValue.selector, ETH_AMOUNT, ETH_AMOUNT - 1));
-        vault.createEscrow{value: ETH_AMOUNT - 1}(seller, ETH, ETH_AMOUNT, PERIOD, arbiter);
+        vault.createEscrow{value: ETH_AMOUNT - 1}(seller, ETH, ETH_AMOUNT, PERIOD, arbiter, MAX_FEE);
     }
 
     function test_RevertWhen_Erc20WithMsgValue() public {
         vm.prank(buyer);
         vm.expectRevert(abi.encodeWithSelector(IEscrowVault.InvalidMsgValue.selector, 0, 1));
-        vault.createEscrow{value: 1}(seller, address(usdc), AMOUNT, PERIOD, arbiter);
+        vault.createEscrow{value: 1}(seller, address(usdc), AMOUNT, PERIOD, arbiter, MAX_FEE);
     }
 
     function test_RevertWhen_Paused() public {
@@ -190,7 +190,7 @@ contract EscrowVaultCreateTest is BaseTest {
         vault.pause();
         vm.prank(buyer);
         vm.expectRevert(Pausable.EnforcedPause.selector);
-        vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, arbiter);
+        vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, arbiter, MAX_FEE);
     }
 
     function test_RevertWhen_FeeOnTransferToken() public {
@@ -201,9 +201,81 @@ contract EscrowVaultCreateTest is BaseTest {
         vm.startPrank(buyer);
         fot.approve(address(vault), AMOUNT);
         vm.expectRevert(abi.encodeWithSelector(IEscrowVault.AmountMismatch.selector, AMOUNT, AMOUNT - AMOUNT / 100));
-        vault.createEscrow(seller, address(fot), AMOUNT, PERIOD, arbiter);
+        vault.createEscrow(seller, address(fot), AMOUNT, PERIOD, arbiter, MAX_FEE);
         vm.stopPrank();
         assertEq(vault.nextEscrowId(), 0, "state rolled back");
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                  DELIVERY DURATION (1 NGÀY – 90 NGÀY)
+    //////////////////////////////////////////////////////////////*/
+
+    function test_DeliveryDurationConstants() public view {
+        assertEq(vault.MIN_DELIVERY_DURATION(), 1 days);
+        assertEq(vault.MAX_DELIVERY_DURATION(), 90 days);
+    }
+
+    function test_DeliveryDuration_ExactlyOneDayOk() public {
+        vm.prank(buyer);
+        uint256 id = vault.createEscrow(seller, address(usdc), AMOUNT, 1 days, arbiter, MAX_FEE);
+        assertEq(vault.getEscrow(id).deliveryDeadline, block.timestamp + 1 days);
+    }
+
+    function test_RevertWhen_DeliveryDurationOneDayMinusOneSecond() public {
+        vm.prank(buyer);
+        vm.expectRevert(abi.encodeWithSelector(IEscrowVault.InvalidDeliveryPeriod.selector, uint48(1 days - 1)));
+        vault.createEscrow(seller, address(usdc), AMOUNT, 1 days - 1, arbiter, MAX_FEE);
+    }
+
+    function test_RevertWhen_DeliveryDurationOneHour() public {
+        vm.prank(buyer);
+        vm.expectRevert(abi.encodeWithSelector(IEscrowVault.InvalidDeliveryPeriod.selector, uint48(1 hours)));
+        vault.createEscrow(seller, address(usdc), AMOUNT, 1 hours, arbiter, MAX_FEE);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                         AUDIT L-1: maxFeeBps
+    //////////////////////////////////////////////////////////////*/
+
+    function test_MaxFee_EqualToCurrentFeeOk() public {
+        vm.prank(buyer);
+        uint256 id = vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, arbiter, FEE_BPS);
+        assertEq(vault.getEscrow(id).feeBps, FEE_BPS);
+    }
+
+    function test_RevertWhen_CurrentFeeAboveMax() public {
+        vm.prank(buyer);
+        vm.expectRevert(abi.encodeWithSelector(IEscrowVault.FeeExceedsMax.selector, FEE_BPS, FEE_BPS - 1));
+        vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, arbiter, FEE_BPS - 1);
+    }
+
+    function test_MaxFee_ZeroAcceptedWhenFeeZero() public {
+        vm.prank(owner);
+        vault.setFeeBps(0);
+        vm.prank(buyer);
+        uint256 id = vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, arbiter, 0);
+        assertEq(vault.getEscrow(id).feeBps, 0);
+    }
+
+    /// @dev Kịch bản L-1: UI hiển thị 1%, admin đổi phí lên 5% đúng lúc giao dịch của Buyer đang chờ.
+    function test_MaxFee_ProtectsAgainstAdminFeeChangeRace() public {
+        uint256 buyerBalanceBefore = usdc.balanceOf(buyer);
+
+        vm.prank(owner);
+        vault.setFeeBps(500); // vào block trước giao dịch của Buyer
+
+        vm.prank(buyer);
+        vm.expectRevert(abi.encodeWithSelector(IEscrowVault.FeeExceedsMax.selector, uint16(500), FEE_BPS));
+        vault.createEscrow(seller, address(usdc), AMOUNT, PERIOD, arbiter, FEE_BPS);
+
+        assertEq(vault.nextEscrowId(), 0, "no escrow created");
+        assertEq(usdc.balanceOf(buyer), buyerBalanceBefore, "no funds pulled");
+    }
+
+    function test_RevertWhen_CurrentFeeAboveMax_Eth() public {
+        vm.prank(buyer);
+        vm.expectRevert(abi.encodeWithSelector(IEscrowVault.FeeExceedsMax.selector, FEE_BPS, uint16(0)));
+        vault.createEscrow{value: ETH_AMOUNT}(seller, ETH, ETH_AMOUNT, PERIOD, arbiter, 0);
     }
 
     function test_RevertWhen_PlainEthSent() public {

@@ -66,6 +66,78 @@ contract EscrowVaultRefundTest is BaseTest {
         vault.refund(id);
     }
 
+    /*//////////////////////////////////////////////////////////////
+             BUYER CHỈ REFUND KHI FUNDED VÀ QUÁ deliveryDeadline
+    //////////////////////////////////////////////////////////////*/
+
+    /// @dev Khi đã Delivered, Buyer không bao giờ refund được, ở bất kỳ thời điểm nào.
+    function testFuzz_RevertWhen_BuyerRefundOnceDelivered(uint48 deliverAfter, uint48 wait) public {
+        uint256 id = _createUsdc();
+        deliverAfter = uint48(bound(deliverAfter, 0, PERIOD));
+        vm.warp(vm.getBlockTimestamp() + deliverAfter);
+        _deliver(id);
+        wait = uint48(bound(wait, 0, 365 days));
+        vm.warp(vm.getBlockTimestamp() + wait);
+
+        vm.prank(buyer);
+        _expectInvalidStatus(id, IEscrowVault.Status.Delivered);
+        vault.refund(id);
+    }
+
+    function test_RevertWhen_BuyerRefundDelivered_AtEachDeadline() public {
+        uint256 id = _createUsdc();
+        _deliver(id);
+        IEscrowVault.Escrow memory e = vault.getEscrow(id);
+        uint256[5] memory times = [
+            uint256(e.disputeDeadline),
+            uint256(e.disputeDeadline) + 1,
+            uint256(e.deliveryDeadline),
+            uint256(e.deliveryDeadline) + 1,
+            _windowEnd(id) + 30 days
+        ];
+        for (uint256 i; i < times.length; ++i) {
+            vm.warp(times[i]);
+            vm.prank(buyer);
+            _expectInvalidStatus(id, IEscrowVault.Status.Delivered);
+            vault.refund(id);
+        }
+        // Buyer vẫn còn release hoặc (trong hạn) raiseDispute.
+        vm.prank(buyer);
+        vault.release(id);
+    }
+
+    function test_RevertWhen_BuyerRefundWhenDisputed() public {
+        uint256 id = _createUsdc();
+        _dispute(id, buyer);
+        vm.warp(vault.getEscrow(id).deliveryDeadline + 1);
+        vm.prank(buyer);
+        _expectInvalidStatus(id, IEscrowVault.Status.Disputed);
+        vault.refund(id);
+    }
+
+    function test_BuyerRefund_ExactDeliveryDeadlineBoundary() public {
+        uint256 id = _createUsdc();
+        uint48 deadline = vault.getEscrow(id).deliveryDeadline;
+        vm.warp(deadline);
+        vm.prank(buyer);
+        vm.expectRevert(IEscrowVault.DeadlineNotReached.selector);
+        vault.refund(id);
+
+        vm.warp(uint256(deadline) + 1);
+        vm.prank(buyer);
+        vault.refund(id);
+        assertEq(uint8(_status(id)), uint8(IEscrowVault.Status.Refunded));
+    }
+
+    function test_SellerVoluntaryRefund_DeliveredAfterWindow() public {
+        uint256 id = _createUsdc();
+        _deliver(id);
+        vm.warp(_windowEnd(id) + 1);
+        vm.prank(seller);
+        vault.refund(id);
+        assertEq(vault.withdrawable(buyer, address(usdc)), AMOUNT);
+    }
+
     function test_RevertWhen_StrangerRefund() public {
         uint256 id = _createUsdc();
         vm.prank(stranger);

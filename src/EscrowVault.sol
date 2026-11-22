@@ -30,9 +30,9 @@ contract EscrowVault is IEscrowVault, Ownable2Step, ReentrancyGuard, Pausable {
     /// @notice Mẫu số bps.
     uint16 public constant BPS_DENOMINATOR = 10_000;
     /// @notice Thời hạn giao hàng tối thiểu.
-    uint48 public constant MIN_DELIVERY_PERIOD = 1 hours;
+    uint48 public constant MIN_DELIVERY_DURATION = 1 days;
     /// @notice Thời hạn giao hàng tối đa.
-    uint48 public constant MAX_DELIVERY_PERIOD = 90 days;
+    uint48 public constant MAX_DELIVERY_DURATION = 90 days;
     /// @notice Thời gian khiếu nại sau khi Seller báo giao hàng.
     uint48 public constant DISPUTE_WINDOW = 3 days;
     /// @notice Thời hạn Arbiter phán quyết, tính từ lúc mở tranh chấp.
@@ -106,18 +106,19 @@ contract EscrowVault is IEscrowVault, Ownable2Step, ReentrancyGuard, Pausable {
     //////////////////////////////////////////////////////////////*/
 
     /// @inheritdoc IEscrowVault
-    function createEscrow(address seller, address token, uint256 amount, uint48 deliveryPeriod, address arbiter)
-        external
-        payable
-        nonReentrant
-        whenNotPaused
-        returns (uint256 id)
-    {
+    function createEscrow(
+        address seller,
+        address token,
+        uint256 amount,
+        uint48 deliveryPeriod,
+        address arbiter,
+        uint16 maxFeeBps
+    ) external payable nonReentrant whenNotPaused returns (uint256 id) {
         // Checks
         if (seller == address(0)) revert ZeroAddress();
         if (seller == msg.sender) revert InvalidSeller();
         if (amount == 0) revert ZeroAmount();
-        if (deliveryPeriod < MIN_DELIVERY_PERIOD || deliveryPeriod > MAX_DELIVERY_PERIOD) {
+        if (deliveryPeriod < MIN_DELIVERY_DURATION || deliveryPeriod > MAX_DELIVERY_DURATION) {
             revert InvalidDeliveryPeriod(deliveryPeriod);
         }
         address arbiterFinal = arbiter == address(0) ? defaultArbiter : arbiter;
@@ -131,9 +132,12 @@ contract EscrowVault is IEscrowVault, Ownable2Step, ReentrancyGuard, Pausable {
             if (!isTokenAllowed[token]) revert TokenNotAllowed(token);
         }
 
+        // Audit L-1: người tạo chốt mức phí tối đa chấp nhận được.
+        uint16 lockedFee = feeBps;
+        if (lockedFee > maxFeeBps) revert FeeExceedsMax(lockedFee, maxFeeBps);
+
         // Effects
         id = ++nextEscrowId;
-        uint16 lockedFee = feeBps;
         // casting to 'uint48' is safe: uint48 seconds overflow in year ~8.9 million
         // forge-lint: disable-next-line(unsafe-typecast)
         uint48 deliveryDeadline = uint48(block.timestamp) + deliveryPeriod;
@@ -214,6 +218,7 @@ contract EscrowVault is IEscrowVault, Ownable2Step, ReentrancyGuard, Pausable {
                 revert InvalidStatus(id, status);
             }
         } else if (msg.sender == e.buyer) {
+            // Buyer chỉ hoàn tiền khi Seller chưa báo giao hàng và đã quá hạn giao.
             _requireStatus(id, e, Status.Funded);
             if (block.timestamp <= e.deliveryDeadline) revert DeadlineNotReached();
         } else {
@@ -281,23 +286,13 @@ contract EscrowVault is IEscrowVault, Ownable2Step, ReentrancyGuard, Pausable {
 
     /// @inheritdoc IEscrowVault
     function withdraw(address token) external nonReentrant {
-        // Checks
-        uint256 bal = withdrawable[msg.sender][token];
-        if (bal == 0) revert NothingToWithdraw();
+        _withdraw(token, msg.sender);
+    }
 
-        // Effects
-        withdrawable[msg.sender][token] = 0;
-
-        // Event phát trước Interaction; nếu chuyển tiền revert thì log cũng bị hủy.
-        emit Withdrawn(msg.sender, token, bal);
-
-        // Interactions
-        if (token == NATIVE_TOKEN) {
-            (bool ok,) = msg.sender.call{value: bal}("");
-            if (!ok) revert EthTransferFailed();
-        } else {
-            IERC20(token).safeTransfer(msg.sender, bal);
-        }
+    /// @inheritdoc IEscrowVault
+    function withdrawTo(address token, address to) external nonReentrant {
+        if (to == address(0)) revert ZeroAddress();
+        _withdraw(token, to);
     }
 
     /// @inheritdoc IEscrowVault
@@ -388,6 +383,27 @@ contract EscrowVault is IEscrowVault, Ownable2Step, ReentrancyGuard, Pausable {
         uint256 amount = e.amount;
         _credit(e.buyer, e.token, amount);
         emit EscrowRefunded(id, msg.sender, amount);
+    }
+
+    /// @dev Rút toàn bộ số dư của `msg.sender` theo `token`, chuyển tới `to` (CEI).
+    function _withdraw(address token, address to) private {
+        // Checks
+        uint256 bal = withdrawable[msg.sender][token];
+        if (bal == 0) revert NothingToWithdraw();
+
+        // Effects
+        withdrawable[msg.sender][token] = 0;
+
+        // Event phát trước Interaction; nếu chuyển tiền revert thì log cũng bị hủy.
+        emit Withdrawn(msg.sender, token, to, bal);
+
+        // Interactions
+        if (token == NATIVE_TOKEN) {
+            (bool ok,) = to.call{value: bal}("");
+            if (!ok) revert EthTransferFailed();
+        } else {
+            IERC20(token).safeTransfer(to, bal);
+        }
     }
 
     /// @dev Cộng `amount` vào số dư chờ rút; bỏ qua khoản bằng 0.

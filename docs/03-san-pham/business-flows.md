@@ -32,7 +32,8 @@ Người mua và người bán không tin nhau vẫn giao dịch được: ngư�
 | Trần phí (`MAX_FEE_BPS`) | **5% (500 bps)** | Hằng số trong code, Admin không vượt được |
 | Thời điểm áp phí | Chốt theo phí hiện hành **tại lúc tạo escrow** | Admin đổi phí không ảnh hưởng escrow đang mở |
 | Hoàn tiền 100% cho Buyer | **Không thu phí** | Áp dụng cho hủy, hoàn tiền và phán quyết 100% cho Buyer |
-| Thời hạn giao hàng | Buyer tự đặt, **tối thiểu 1 giờ, tối đa 90 ngày** | Tính từ lúc tạo escrow |
+| Thời hạn giao hàng | Buyer tự đặt, **tối thiểu 1 ngày, tối đa 90 ngày** (`MIN_DELIVERY_DURATION`, `MAX_DELIVERY_DURATION`) | Tính từ lúc tạo escrow. Tối thiểu 1 ngày để Seller luôn kịp `markDelivered` |
+| Bảo vệ phí (`maxFeeBps`) | Buyer truyền mức phí tối đa chấp nhận | Nếu Admin đổi phí lúc giao dịch đang chờ và phí mới > `maxFeeBps` thì giao dịch revert, không kéo tiền |
 | Thời gian khiếu nại (`DISPUTE_WINDOW`) | **3 ngày** sau khi Seller báo đã giao hàng, **nhưng không kết thúc trước `deliveryDeadline`** | Mốc kết thúc = `max(disputeDeadline, deliveryDeadline)`. Hết mốc mà không khiếu nại thì Seller tự giải ngân được (sửa theo audit M-1) |
 | Trọng tài | Chỉ định lúc tạo escrow; để trống thì dùng **trọng tài mặc định của hệ thống** | Địa chỉ trọng tài được lưu cố định vào escrow |
 | Thời hạn phân xử (`ARBITRATION_TIMEOUT`) | **14 ngày** kể từ lúc mở tranh chấp | Quá hạn mà trọng tài chưa phán quyết: Buyer gọi `claimTimeoutRefund` lấy lại 100% tiền gốc, không phí |
@@ -56,11 +57,11 @@ Người mua và người bán không tin nhau vẫn giao dịch được: ngư�
 ### Bảng chuyển trạng thái
 | Từ | Sang | Ai gọi | Điều kiện |
 | :--- | :--- | :--- | :--- |
-| — | `Funded` | Buyer | Token là ETH hoặc nằm trong whitelist, `amount > 0`, Seller hợp lệ và khác Buyer, thời hạn trong khoảng 1 giờ – 90 ngày, Arbiter khác Buyer/Seller, contract không `paused` |
+| — | `Funded` | Buyer | Token là ETH hoặc nằm trong whitelist, `amount > 0`, Seller hợp lệ và khác Buyer, thời hạn trong khoảng 1 ngày – 90 ngày, phí hiện hành ≤ `maxFeeBps`, Arbiter khác Buyer/Seller, contract không `paused` |
 | `Funded` | `Delivered` | Seller | Chưa qua `deliveryDeadline` |
 | `Funded` / `Delivered` | `Released` | Buyer | Bất kỳ lúc nào khi chưa có tranh chấp |
 | `Delivered` | `Released` | Seller | Đã qua **cả** `disputeDeadline` (3 ngày sau khi báo giao) **và** `deliveryDeadline` mà không có tranh chấp |
-| `Funded` | `Refunded` | Buyer | Đã qua `deliveryDeadline` mà Seller chưa báo giao hàng |
+| `Funded` | `Refunded` | Buyer | Đã qua `deliveryDeadline` mà Seller chưa báo giao hàng. **Khi đã `Delivered`, Buyer không bao giờ `refund` được** — chỉ còn `release` hoặc `raiseDispute` |
 | `Funded` / `Delivered` / `Disputed` | `Refunded` | Seller | Seller tự nguyện hoàn toàn bộ tiền |
 | `Funded` | `Disputed` | Buyer hoặc Seller | Chưa qua `deliveryDeadline` |
 | `Delivered` | `Disputed` | Buyer hoặc Seller | Chưa qua `max(disputeDeadline, deliveryDeadline)` |
@@ -87,7 +88,7 @@ Escrow ở `Disputed` kết thúc khi Arbiter phân xử trong 14 ngày, khi Sel
 ## 4. Luồng xử lý On-chain & Off-chain
 
 ### 4.1. Luồng A — Tạo và nạp escrow
-1. **Frontend:** Buyer nhập địa chỉ Seller, tài sản (ETH hoặc token trong whitelist), số tiền, thời hạn giao hàng (1 giờ – 90 ngày) và địa chỉ trọng tài đã thống nhất với Seller (bỏ trống nếu dùng trọng tài hệ thống). Frontend hiển thị phí 1% sẽ trừ vào tiền Seller nhận.
+1. **Frontend:** Buyer nhập địa chỉ Seller, tài sản (ETH hoặc token trong whitelist), số tiền, thời hạn giao hàng (1 ngày – 90 ngày) và địa chỉ trọng tài đã thống nhất với Seller. Frontend đọc `defaultArbiter` và truyền địa chỉ tường minh (không truyền `address(0)`), hiển thị phí hiện hành sẽ trừ vào tiền Seller nhận, và truyền đúng mức phí đó làm `maxFeeBps`.
 2. **Frontend:** Với ERC20, Buyer ký `approve` cho contract EscrowVault. Trạng thái tách riêng: chờ ký ví (`isPending`) và chờ xác nhận block (`isConfirming`).
 3. **Smart Contract:** `createEscrow(...)` kiểm tra điều kiện (Checks) → lưu escrow, chốt phí và trọng tài, trạng thái `Funded` (Effects) → nhận token qua `safeTransferFrom` hoặc kiểm tra `msg.value == amount` với ETH (Interactions). Phát `EscrowCreated`.
 4. **Indexer:** Bắt `EscrowCreated`, tạo bản ghi escrow, gắn với Buyer, Seller và Arbiter để mỗi bên thấy trong danh sách của mình.
@@ -132,11 +133,11 @@ Hai phương án đã được cân nhắc cho trường hợp quá `ARBITRATION
 - Từ lúc mở tranh chấp tới khi Buyer gọi `claimTimeoutRefund`, Seller vẫn có thể tự nguyện `refund`.
 
 ### 4.5. Luồng E — Rút tiền (Pull Payment)
-Kết quả của các luồng B, C, D **không chuyển tiền trực tiếp** mà ghi có vào số dư rút được của từng người theo từng tài sản. Người nhận tự gọi `withdraw(token)`:
+Kết quả của các luồng B, C, D **không chuyển tiền trực tiếp** mà ghi có vào số dư rút được của từng người theo từng tài sản. Người nhận tự gọi `withdraw(token)` (về ví mình) hoặc `withdrawTo(token, to)` (sang ví khác — dùng khi ví mình không nhận được ETH hoặc bị USDC/USDT blacklist; chỉ trừ số dư của người gọi):
 - Checks: số dư > 0 → Effects: đặt số dư về 0 → Interactions: `safeTransfer`, hoặc `call{value: ...}` với ETH và kiểm tra kết quả.
 - Phát `Withdrawn`.
 - Lý do: tránh một ví nhận lỗi (contract revert khi nhận ETH, ví bị USDC/USDT blacklist) làm kẹt việc kết thúc escrow, và giảm rủi ro reentrancy.
-- `withdraw` **không bao giờ bị chặn** bởi `pause`.
+- `withdraw` và `withdrawTo` **không bao giờ bị chặn** bởi `pause`.
 
 ### 4.6. Luồng F — Quản trị
 | Hành động | Ai | Event |
@@ -150,7 +151,7 @@ Kết quả của các luồng B, C, D **không chuyển tiền trực tiếp** 
 
 - Bỏ token khỏi whitelist chỉ chặn escrow mới; escrow cũ dùng token đó vẫn hoàn tất và rút bình thường.
 - Đổi trọng tài mặc định không ảnh hưởng escrow đã tạo (trọng tài được lưu cố định trong escrow).
-- Khi `paused`: **chỉ chặn tạo escrow mới**. Các thao tác `markDelivered`, `release`, `refund`, `raiseDispute`, `resolveDispute`, `claimTimeoutRefund`, `withdraw` vẫn hoạt động để người dùng không bị kẹt tiền.
+- Khi `paused`: **chỉ chặn tạo escrow mới**. Các thao tác `markDelivered`, `release`, `refund`, `raiseDispute`, `resolveDispute`, `claimTimeoutRefund`, `withdraw`, `withdrawTo` vẫn hoạt động để người dùng không bị kẹt tiền.
 
 ### 4.7. Luồng G — Nâng cấp phiên bản
 Contract không có Proxy. Khi có phiên bản mới: deploy contract mới, Frontend chuyển sang contract mới cho escrow mới, Admin `pause` contract cũ để chặn tạo mới. Escrow trên contract cũ tiếp tục hoàn tất và rút tiền như bình thường.

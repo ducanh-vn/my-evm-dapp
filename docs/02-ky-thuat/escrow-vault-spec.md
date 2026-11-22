@@ -15,7 +15,7 @@
 ## 1. Mục đích & Vai trò trong hệ thống
 - Một contract duy nhất, bất biến, giữ tiền ký quỹ của mọi escrow (ETH và ERC-20 trong whitelist).
 - Mỗi escrow là một bản ghi trong `mapping`, đi qua state machine `Funded → Delivered → Released / Refunded / Disputed → Resolved`.
-- Mọi khoản tiền ra được **ghi có** vào `withdrawable[user][token]` (pull payment); người nhận tự gọi `withdraw`.
+- Mọi khoản tiền ra được **ghi có** vào `withdrawable[user][token]` (pull payment); người nhận tự gọi `withdraw` (về ví mình) hoặc `withdrawTo` (sang ví khác).
 - Không gọi contract bên ngoài nào khác ngoài token ERC-20 trong whitelist và chuyển ETH cho người rút.
 - Indexer (Ponder / The Graph) đọc Event để dựng danh sách, lịch sử; contract không có hàm trả về mảng.
 
@@ -30,8 +30,8 @@ Quy ước: `token == address(0)` nghĩa là ETH.
 | :--- | :--- | :--- | :--- |
 | `MAX_FEE_BPS` | `uint16 constant` | `500` | Trần phí 5% |
 | `BPS_DENOMINATOR` | `uint16 constant` | `10_000` | Mẫu số bps |
-| `MIN_DELIVERY_PERIOD` | `uint48 constant` | `1 hours` | Thời hạn giao hàng tối thiểu |
-| `MAX_DELIVERY_PERIOD` | `uint48 constant` | `90 days` | Thời hạn giao hàng tối đa |
+| `MIN_DELIVERY_DURATION` | `uint48 constant` | `1 days` | Thời hạn giao hàng tối thiểu (trước đây `MIN_DELIVERY_PERIOD = 1 hours`; nâng lên theo audit M-1 chiều ngược) |
+| `MAX_DELIVERY_DURATION` | `uint48 constant` | `90 days` | Thời hạn giao hàng tối đa (đổi tên cho đồng bộ, giá trị không đổi) |
 | `DISPUTE_WINDOW` | `uint48 constant` | `3 days` | Thời gian khiếu nại tối thiểu sau khi giao hàng; mốc kết thúc thực tế là `max(disputeDeadline, deliveryDeadline)` |
 | `ARBITRATION_TIMEOUT` | `uint48 constant` | `14 days` | Thời hạn trọng tài phán quyết, tính từ lúc mở tranh chấp |
 | `NATIVE_TOKEN` | `address constant` | `address(0)` | Ký hiệu ETH |
@@ -93,14 +93,15 @@ constructor(
 ### 3.1. Hàm người dùng
 | Tên hàm | Visibility | Modifier / Quyền | Mô tả hành động | Event phát ra |
 | :--- | :--- | :--- | :--- | :--- |
-| `createEscrow(address seller, address token, uint256 amount, uint48 deliveryPeriod, address arbiter) returns (uint256 id)` | `external payable` | `nonReentrant`, `whenNotPaused`; ai cũng gọi được (người gọi là Buyer) | Tạo escrow, chốt `feeBps` và `arbiter` (`address(0)` → `defaultArbiter`), nhận tiền | `EscrowCreated` |
+| `createEscrow(address seller, address token, uint256 amount, uint48 deliveryPeriod, address arbiter, uint16 maxFeeBps) returns (uint256 id)` | `external payable` | `nonReentrant`, `whenNotPaused`; ai cũng gọi được (người gọi là Buyer) | Tạo escrow, chốt `feeBps` (revert `FeeExceedsMax` nếu `feeBps > maxFeeBps`) và `arbiter` (`address(0)` → `defaultArbiter`), nhận tiền | `EscrowCreated` |
 | `markDelivered(uint256 id)` | `external` | Chỉ Seller của escrow; `now ≤ deliveryDeadline` | `Funded` → `Delivered`, đặt `disputeDeadline = now + DISPUTE_WINDOW` | `EscrowDelivered` |
 | `release(uint256 id)` | `external` | `nonReentrant`; Buyer (khi `Funded`/`Delivered`) hoặc Seller (khi `Delivered` và `now > max(disputeDeadline, deliveryDeadline)`) | Ghi có `amount − fee` cho Seller, `fee` cho `feeRecipient` | `EscrowReleased` |
-| `refund(uint256 id)` | `external` | `nonReentrant`; Seller (khi `Funded`/`Delivered`/`Disputed`) hoặc Buyer (khi `Funded` và `now > deliveryDeadline`) | Ghi có toàn bộ `amount` cho Buyer, không phí | `EscrowRefunded` |
+| `refund(uint256 id)` | `external` | `nonReentrant`; Seller (khi `Funded`/`Delivered`/`Disputed`) hoặc Buyer (**chỉ** khi `Funded` — Seller chưa từng `markDelivered` — và `now > deliveryDeadline`; khi đã `Delivered` Buyer chỉ còn `release`/`raiseDispute`) | Ghi có toàn bộ `amount` cho Buyer, không phí | `EscrowRefunded` |
 | `raiseDispute(uint256 id)` | `external` | Buyer hoặc Seller; `Funded` và `now ≤ deliveryDeadline`, hoặc `Delivered` và `now ≤ max(disputeDeadline, deliveryDeadline)` | Chuyển sang `Disputed`, đặt `arbitrationDeadline = now + ARBITRATION_TIMEOUT` | `DisputeRaised` |
 | `resolveDispute(uint256 id, uint16 buyerBps)` | `external` | `nonReentrant`; chỉ `arbiter` của escrow; trạng thái `Disputed` và `now ≤ arbitrationDeadline` | Chia tiền theo `buyerBps`, phí chỉ trên phần Seller | `DisputeResolved` |
 | `claimTimeoutRefund(uint256 id)` | `external` | `nonReentrant`; chỉ Buyer; trạng thái `Disputed` và `now > arbitrationDeadline` | Ghi có 100% `amount` cho Buyer, không phí, `status = Refunded` | `EscrowRefunded` |
-| `withdraw(address token)` | `external` | `nonReentrant`; **không** có `whenNotPaused` | Rút toàn bộ số dư của `msg.sender` theo tài sản | `Withdrawn` |
+| `withdraw(address token)` | `external` | `nonReentrant`; **không** có `whenNotPaused` | Rút toàn bộ số dư của `msg.sender` theo tài sản về chính `msg.sender` | `Withdrawn` |
+| `withdrawTo(address token, address to)` | `external` | `nonReentrant`; **không** có `whenNotPaused`; `to != address(0)` | Rút toàn bộ số dư của `msg.sender` theo tài sản, chuyển tới `to` (audit L-3: ví không nhận được ETH / bị blacklist) | `Withdrawn` |
 | `getEscrow(uint256 id) returns (Escrow memory)` | `external view` | Ai cũng gọi được | Đọc một escrow | — |
 
 ### 3.2. Hàm quản trị
@@ -121,7 +122,7 @@ Không có hàm nào cho owner rút tiền khỏi contract.
 ### 3.3. Chi tiết kiểm tra và tính toán
 
 **`createEscrow`**
-1. Checks: `seller != address(0)`, `seller != msg.sender`; `amount > 0`; `MIN_DELIVERY_PERIOD ≤ deliveryPeriod ≤ MAX_DELIVERY_PERIOD`; `arbiterFinal = arbiter == address(0) ? defaultArbiter : arbiter`, và `arbiterFinal` khác Buyer và Seller.
+1. Checks: `seller != address(0)`, `seller != msg.sender`; `amount > 0`; `MIN_DELIVERY_DURATION ≤ deliveryPeriod ≤ MAX_DELIVERY_DURATION`; `feeBps ≤ maxFeeBps` (nếu không, revert `FeeExceedsMax(feeBps, maxFeeBps)`); `arbiterFinal = arbiter == address(0) ? defaultArbiter : arbiter`, và `arbiterFinal` khác Buyer và Seller.
    - ETH: `msg.value == amount`.
    - ERC-20: `msg.value == 0`, `isTokenAllowed[token]`.
 2. Effects: `id = ++nextEscrowId` (id bắt đầu từ 1); ghi struct với `feeBps` hiện hành, `deliveryDeadline = block.timestamp + deliveryPeriod`, `status = Funded`.
@@ -147,7 +148,7 @@ Không có hàm nào cho owner rút tiền khỏi contract.
 
 `feeRecipient` được đọc tại thời điểm kết thúc escrow (không chốt theo escrow).
 
-**`withdraw`** — `bal = withdrawable[msg.sender][token]`; revert `NothingToWithdraw` nếu `0`; đặt về `0`; ETH: `(bool ok,) = msg.sender.call{value: bal}("")`, revert `EthTransferFailed` nếu `!ok`; ERC-20: `safeTransfer`.
+**`withdraw` / `withdrawTo`** — cùng dùng `_withdraw(token, to)` với `to = msg.sender` (withdraw) hoặc `to` do người gọi chọn (withdrawTo, revert `ZeroAddress` nếu `to == 0`): `bal = withdrawable[msg.sender][token]`; revert `NothingToWithdraw` nếu `0`; đặt về `0`; phát `Withdrawn`; ETH: `(bool ok,) = to.call{value: bal}("")`, revert `EthTransferFailed` nếu `!ok`; ERC-20: `safeTransfer(to, bal)`. Chỉ trừ số dư của `msg.sender`, không ai rút được tiền của người khác.
 
 Mọi hàm đổi trạng thái escrow revert `EscrowNotFound` khi `status == None`, `InvalidStatus` khi sai trạng thái, `Unauthorized` khi sai người gọi, `DeadlinePassed` / `DeadlineNotReached` khi sai thời điểm.
 
@@ -160,14 +161,14 @@ Mọi hàm đổi trạng thái escrow revert `EscrowNotFound` khi `status == No
 | `EscrowRefunded` | `uint256 indexed id, address indexed caller, uint256 amount` |
 | `DisputeRaised` | `uint256 indexed id, address indexed raisedBy, uint48 arbitrationDeadline` |
 | `DisputeResolved` | `uint256 indexed id, address indexed arbiter, uint16 buyerBps, uint256 buyerAmount, uint256 sellerAmount, uint256 fee` |
-| `Withdrawn` | `address indexed user, address indexed token, uint256 amount` |
+| `Withdrawn` | `address indexed user, address indexed token, address indexed to, uint256 amount` |
 | `FeeUpdated` | `uint16 oldBps, uint16 newBps` |
 | `FeeRecipientUpdated` | `address indexed oldRecipient, address indexed newRecipient` |
 | `DefaultArbiterUpdated` | `address indexed oldArbiter, address indexed newArbiter` |
 | `TokenAllowlistUpdated` | `address indexed token, bool allowed` |
 
 ### 3.5. Custom Errors
-`ZeroAddress()`, `ZeroAmount()`, `InvalidSeller()`, `InvalidArbiter()`, `InvalidDeliveryPeriod(uint48 period)`, `TokenNotAllowed(address token)`, `InvalidMsgValue(uint256 expected, uint256 actual)`, `AmountMismatch(uint256 expected, uint256 received)`, `EscrowNotFound(uint256 id)`, `InvalidStatus(uint256 id, Status current)`, `Unauthorized()`, `DeadlinePassed()`, `DeadlineNotReached()`, `InvalidBps(uint256 bps)`, `FeeTooHigh(uint16 bps)`, `NothingToWithdraw()`, `EthTransferFailed()`, `RenounceDisabled()`.
+`ZeroAddress()`, `ZeroAmount()`, `InvalidSeller()`, `InvalidArbiter()`, `InvalidDeliveryPeriod(uint48 period)`, `TokenNotAllowed(address token)`, `InvalidMsgValue(uint256 expected, uint256 actual)`, `AmountMismatch(uint256 expected, uint256 received)`, `EscrowNotFound(uint256 id)`, `InvalidStatus(uint256 id, Status current)`, `Unauthorized()`, `DeadlinePassed()`, `DeadlineNotReached()`, `InvalidBps(uint256 bps)`, `FeeTooHigh(uint16 bps)`, `FeeExceedsMax(uint16 current, uint16 max)`, `NothingToWithdraw()`, `EthTransferFailed()`, `RenounceDisabled()`.
 
 ### 3.6. Invariants
 1. Với mỗi `token`: `số dư thực của contract ≥ Σ amount của escrow ở Funded/Delivered/Disputed + Σ withdrawable[*][token]`. Chỉ yêu cầu `≥` vì ai cũng có thể gửi thẳng token hoặc force-feed ETH (qua `selfdestruct`) vào contract; logic **không** được dựa vào `balanceOf(this)` hay `address(this).balance` (trừ phép đo chênh lệch khi nhận ERC-20 trong `createEscrow`).
@@ -201,7 +202,9 @@ Viết bằng Foundry (`test/EscrowVault.t.sol`, `test/EscrowVault.invariant.t.s
 - [ ] Đổi `feeBps` sau khi tạo không ảnh hưởng escrow cũ.
 
 ### Revert Cases
-- [ ] `createEscrow`: `amount = 0`, `seller = 0` hoặc `= buyer`, `deliveryPeriod` < 1 giờ hoặc > 90 ngày, arbiter trùng Buyer/Seller, token ngoài whitelist, ETH sai `msg.value`, ERC-20 kèm `msg.value > 0`, khi `paused`.
+- [ ] `createEscrow`: `amount = 0`, `seller = 0` hoặc `= buyer`, `deliveryPeriod` < 1 ngày (kiểm tra biên `1 days - 1` revert, `1 days` OK) hoặc > 90 ngày, arbiter trùng Buyer/Seller, token ngoài whitelist, ETH sai `msg.value`, ERC-20 kèm `msg.value > 0`, khi `paused`.
+- [ ] `createEscrow` với `maxFeeBps < feeBps` → `FeeExceedsMax`; `maxFeeBps == feeBps` OK; kịch bản admin đổi phí 1% → 5% ngay trước giao dịch của Buyer (`maxFeeBps = 100`) → revert, không kéo tiền.
+- [ ] Buyer `refund` khi `Delivered` ở mọi thời điểm (trước/giữa/sau các mốc, fuzz) và khi `Disputed` → `InvalidStatus`; biên `deliveryDeadline` (revert) / `deliveryDeadline + 1` (OK) khi `Funded`.
 - [ ] `markDelivered` bởi người không phải Seller, sau `deliveryDeadline`, khi không ở `Funded`.
 - [ ] Seller `release` khi `now ≤ max(disputeDeadline, deliveryDeadline)` hoặc khi còn `Funded`; người lạ `release`.
 - [ ] Buyer `refund` trước `deliveryDeadline` hoặc khi đã `Delivered`.
@@ -211,10 +214,11 @@ Viết bằng Foundry (`test/EscrowVault.t.sol`, `test/EscrowVault.invariant.t.s
 - [ ] Mọi thao tác trên escrow đã kết thúc hoặc id không tồn tại.
 - [ ] Hàm admin gọi từ ví thường; `setFeeBps(501)`; `renounceOwnership`.
 - [ ] `withdraw` khi số dư bằng 0; ETH tới contract từ chối nhận (`EthTransferFailed`, số dư được giữ nguyên).
+- [ ] `withdrawTo`: chuyển đúng ví nhận (ETH, ERC-20), `to = 0` → `ZeroAddress`, số dư 0 → `NothingToWithdraw`, ví nhận từ chối ETH → `EthTransferFailed` (giữ số dư), cứu tiền cho Seller là contract không nhận ETH và cho Seller bị token blacklist, chạy được khi `paused`, không rút được số dư người khác.
 - [ ] Token fee-on-transfer (nếu lỡ whitelist) → `AmountMismatch`.
 
 ### Pause
-- [ ] Khi `paused`: `createEscrow` revert; `markDelivered`, `release`, `refund`, `raiseDispute`, `resolveDispute`, `claimTimeoutRefund`, `withdraw` vẫn chạy.
+- [ ] Khi `paused`: `createEscrow` revert; `markDelivered`, `release`, `refund`, `raiseDispute`, `resolveDispute`, `claimTimeoutRefund`, `withdraw`, `withdrawTo` vẫn chạy.
 
 ### Fuzz Test
 - [ ] 1.000+ lượt ngẫu nhiên cho `amount`, `feeBps ∈ [0, 500]`, `buyerBps ∈ [0, 10.000]`, `deliveryPeriod`, mốc `vm.warp`: tổng ghi có luôn bằng `amount`, không mất wei.
@@ -223,7 +227,7 @@ Viết bằng Foundry (`test/EscrowVault.t.sol`, `test/EscrowVault.invariant.t.s
 - [ ] Handler gọi ngẫu nhiên mọi hàm với nhiều Buyer/Seller/Arbiter; kiểm tra các invariant ở mục 3.6 sau mỗi lượt.
 
 ### Reentrancy Test
-- [ ] Contract tấn công nhận ETH rồi gọi lại `withdraw`, `release`, `refund`, `claimTimeoutRefund`, `createEscrow` trong `receive()` → bị chặn bởi `nonReentrant`, số dư đúng.
+- [ ] Contract tấn công nhận ETH rồi gọi lại `withdraw`, `withdrawTo`, `release`, `refund`, `claimTimeoutRefund`, `createEscrow` trong `receive()` → bị chặn bởi `nonReentrant`, số dư đúng.
 
 ### Gas
 - [ ] Chạy `forge test --gas-report` và `forge inspect EscrowVault storage-layout` để xác nhận `Escrow` chiếm 5 slot.
