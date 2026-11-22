@@ -1,21 +1,23 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { getAbiItem, type Address } from "viem";
+import type { Address } from "viem";
 import { usePublicClient } from "wagmi";
 
 import { escrowVaultAbi } from "@/constants/escrowVaultAbi";
 import { useVaultDeployment } from "@/hooks/useVaultDeployment";
 
-const CREATED_EVENT = getAbiItem({ abi: escrowVaultAbi, name: "EscrowCreated" });
-/** Nhiều RPC công khai giới hạn khoảng block mỗi lần gọi eth_getLogs. */
-const LOG_CHUNK = 9_000n;
+/** Chỉ quét N escrow mới nhất (MVP). Khi nhiều hơn sẽ chuyển sang Indexer (Ponder / The Graph). */
+const MAX_SCAN = 200;
+/** Số lệnh đọc song song mỗi đợt, tránh dội RPC công khai. */
+const BATCH = 20;
 
-export type MyEscrowRef = { id: bigint; role: "buyer" | "seller" | "arbiter"; blockNumber: bigint };
+export type MyEscrowRef = { id: bigint; role: "buyer" | "seller" | "arbiter" };
 
 /**
- * Danh sách escrow liên quan tới `account` bằng cách đọc event EscrowCreated từ block deploy.
- * Đủ dùng cho MVP/local; khi lượng dữ liệu lớn sẽ chuyển sang Indexer (Ponder / The Graph).
+ * Danh sách escrow liên quan tới `account`: đọc `nextEscrowId` rồi `getEscrow` cho các id mới nhất.
+ * Không dùng eth_getLogs vì RPC Base Sepolia giới hạn mỗi lần chỉ 200 block.
+ * Không dùng multicall vì Anvil mặc định không có Multicall3.
  */
 export function useMyEscrows(account?: Address) {
   const { deployment, chainId } = useVaultDeployment();
@@ -25,34 +27,34 @@ export function useMyEscrows(account?: Address) {
     queryKey: ["myEscrows", chainId, deployment?.escrowVault, account],
     enabled: !!client && !!deployment && !!account,
     refetchInterval: 8_000,
-    queryFn: async (): Promise<MyEscrowRef[]> => {
-      if (!client || !deployment || !account) return [];
-      const latest = await client.getBlockNumber();
+    queryFn: async (): Promise<{ items: MyEscrowRef[]; scanned: number; total: number }> => {
+      if (!client || !deployment || !account) return { items: [], scanned: 0, total: 0 };
+      const vault = { address: deployment.escrowVault, abi: escrowVaultAbi } as const;
+      const total = Number(await client.readContract({ ...vault, functionName: "nextEscrowId" }));
+      const first = Math.max(1, total - MAX_SCAN + 1);
+      const ids: bigint[] = [];
+      for (let i = total; i >= first; i--) ids.push(BigInt(i));
+
       const me = account.toLowerCase();
-      const found: MyEscrowRef[] = [];
-      for (let from = deployment.deployBlock; from <= latest; from += LOG_CHUNK) {
-        const to = from + LOG_CHUNK - 1n > latest ? latest : from + LOG_CHUNK - 1n;
-        const logs = await client.getLogs({
-          address: deployment.escrowVault,
-          event: CREATED_EVENT,
-          fromBlock: from,
-          toBlock: to,
-        });
-        for (const log of logs) {
-          const { id, buyer, seller, arbiter } = log.args;
-          if (id === undefined) continue;
+      const items: MyEscrowRef[] = [];
+      for (let k = 0; k < ids.length; k += BATCH) {
+        const slice = ids.slice(k, k + BATCH);
+        const rows = await Promise.all(
+          slice.map((id) => client.readContract({ ...vault, functionName: "getEscrow", args: [id] })),
+        );
+        rows.forEach((e, j) => {
           const role =
-            buyer?.toLowerCase() === me
+            e.buyer.toLowerCase() === me
               ? "buyer"
-              : seller?.toLowerCase() === me
+              : e.seller.toLowerCase() === me
                 ? "seller"
-                : arbiter?.toLowerCase() === me
+                : e.arbiter.toLowerCase() === me
                   ? "arbiter"
                   : undefined;
-          if (role) found.push({ id, role, blockNumber: log.blockNumber ?? 0n });
-        }
+          if (role) items.push({ id: slice[j], role });
+        });
       }
-      return found.sort((a, b) => (a.id < b.id ? 1 : -1));
+      return { items, scanned: ids.length, total };
     },
   });
 }

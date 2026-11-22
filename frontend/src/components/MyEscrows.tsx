@@ -30,12 +30,17 @@ export function MyEscrows() {
         </button>
       </div>
       {!address && <p className="muted">Kết nối ví để xem các escrow bạn tham gia.</p>}
-      {isLoading && <p className="muted">Đang đọc event…</p>}
+      {isLoading && <p className="muted">Đang đọc danh sách escrow…</p>}
       {error && <p className="status error">Không đọc được danh sách: {error.message}</p>}
-      {data && data.length === 0 && <p className="muted">Chưa có escrow nào liên quan tới ví này.</p>}
-      {data && data.length > 0 && (
+      {data && data.items.length === 0 && <p className="muted">Chưa có escrow nào liên quan tới ví này.</p>}
+      {data && data.total > data.scanned && (
+        <p className="muted">
+          Chỉ quét {data.scanned} escrow mới nhất trên tổng {data.total}; escrow cũ hơn hãy tra theo mã.
+        </p>
+      )}
+      {data && data.items.length > 0 && (
         <ul className="list">
-          {data.map((e) => (
+          {data.items.map((e) => (
             <li key={`${e.id}-${e.role}`}>
               <Link href={`/escrow/${e.id.toString()}`}>Escrow #{e.id.toString()}</Link>{" "}
               <span className="badge">{ROLE_LABEL[e.role]}</span>

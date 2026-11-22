@@ -29,6 +29,9 @@
 | `paused` | `false` |
 | `MIN_DELIVERY_DURATION` | `86400` (1 ngày) |
 
+- **Kiểm tra quyền Safe sau deploy:** Safe đã gọi `setFeeBps(100)` thành công (event `FeeUpdated(100, 100)`), tx [`0xcc4138cb0d241d4a49287b9f275801c7f2beec57e8b20ba8d818890ee2a25513`](https://sepolia.basescan.org/tx/0xcc4138cb0d241d4a49287b9f275801c7f2beec57e8b20ba8d818890ee2a25513), block `62225854`.
+- **Lưu ý cho Indexer/Frontend:** RPC Base Sepolia giới hạn `eth_getLogs` 200 block mỗi lần.
+
 > Safe 1/1 chỉ chấp nhận cho testnet. Mainnet bắt buộc Safe nhiều người ký (xem [checklist deploy](../04-van-hanh/deploy-checklist-base-sepolia.md)).
 
 ## 3. Mainnet — Base (Chain ID: 8453)

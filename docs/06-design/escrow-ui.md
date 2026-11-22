@@ -56,5 +56,5 @@ Khi không có nút nào, khung hiện lý do (ví dụ "Chờ người mua xác
 
 ## 4. Ranh giới On-chain / Off-chain
 
-- Chưa có Indexer: danh sách "Escrow của tôi" đọc event `EscrowCreated` từ block deploy (chia đoạn 9.000 block cho RPC công khai). Khi dữ liệu lớn sẽ chuyển sang Ponder / The Graph.
+- Chưa có Indexer: danh sách "Escrow của tôi" đọc `nextEscrowId` rồi gọi `getEscrow` cho tối đa 200 escrow mới nhất (đọc theo đợt 20 lệnh). Không dùng `eth_getLogs` vì RPC Base Sepolia (kể cả RPC công khai) giới hạn mỗi lần 200 block. Khi dữ liệu lớn sẽ chuyển sang Ponder / The Graph; Indexer bắt đầu từ block deploy ghi trong `contract-addresses.md`.
 - Mọi lệnh gọi contract nằm trong `src/hooks/`; component chỉ hiển thị (theo `code-standards.md`).
