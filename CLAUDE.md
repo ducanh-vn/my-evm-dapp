@@ -10,7 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Contract: `src/EscrowVault.sol`, interface `src/interfaces/IEscrowVault.sol`.
   - Test: `test/` (unit test theo luồng `EscrowVault.*.t.sol`, fuzz `EscrowVault.Fuzz.t.sol`, invariant `EscrowVault.invariant.t.sol` + `test/handlers/`, mock trong `test/mocks/`, setup chung `test/utils/BaseTest.sol`).
   - Remapping: `@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/` (trong `foundry.toml`).
-  - Chưa có script deploy (`script/` trống), Frontend (`package.json`) hay Indexer.
+  - Script deploy: `script/DeployEscrowVault.s.sol` (tham số đọc từ env, test tại `test/DeployEscrowVault.t.sol`). Checklist deploy: `docs/04-van-hanh/deploy-checklist-base-sepolia.md`.
+  - Chưa có Frontend (`package.json`) hay Indexer.
 - **Tech stack:** Solidity (Foundry / Hardhat) + OpenZeppelin + Next.js (Viem / Wagmi) + Indexer (Ponder / The Graph).
 - **Lệnh vận hành (Foundry):**
   - Build contracts: `forge build`

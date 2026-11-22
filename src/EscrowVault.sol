@@ -399,6 +399,8 @@ contract EscrowVault is IEscrowVault, Ownable2Step, ReentrancyGuard, Pausable {
 
         // Interactions
         if (token == NATIVE_TOKEN) {
+            // `to` do chính chủ số dư chọn (audit L-3); chỉ trừ số dư của msg.sender nên không gây mất tiền người khác.
+            // forge-lint: disable-next-line(arbitrary-send-eth)
             (bool ok,) = to.call{value: bal}("");
             if (!ok) revert EthTransferFailed();
         } else {
