@@ -1,0 +1,21 @@
+# Compiler files
+cache/
+out/
+
+# Commonly ignored directories
+.logs/
+.ignore/
+
+# Broadcast logs (mọi mạng)
+broadcast/
+
+
+# Dotenv file
+.env
+.env.*
+!.env.example
+
+# Khóa / keystore
+*.key
+*.pem
+keystore/
