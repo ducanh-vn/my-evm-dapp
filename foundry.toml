@@ -26,5 +26,7 @@ fail_on_revert = false
 [fmt]
 line_length = 120
 
-# Không khai báo rpc_endpoints / etherscan / private key ở đây (write-guard policy).
+# Chỉ tham chiếu TÊN biến môi trường (giá trị nằm trong .env, không commit). Không bao giờ ghi URL/API key/private key ở đây.
+[rpc_endpoints]
+base_sepolia = "${BASE_SEPOLIA_RPC_URL}"
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
