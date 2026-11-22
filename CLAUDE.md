@@ -11,7 +11,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Test: `test/` (unit test theo luồng `EscrowVault.*.t.sol`, fuzz `EscrowVault.Fuzz.t.sol`, invariant `EscrowVault.invariant.t.sol` + `test/handlers/`, mock trong `test/mocks/`, setup chung `test/utils/BaseTest.sol`).
   - Remapping: `@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/` (trong `foundry.toml`).
   - Script deploy: `script/DeployEscrowVault.s.sol` (tham số đọc từ env, test tại `test/DeployEscrowVault.t.sol`). Checklist deploy: `docs/04-van-hanh/deploy-checklist-base-sepolia.md`.
-  - Chưa có Frontend (`package.json`) hay Indexer.
+  - Script demo local: `script/DeployLocalDemo.s.sol` (chỉ Anvil 31337; ghi địa chỉ vào `frontend/src/constants/deployments/local.json`).
+  - Frontend: `frontend/` (Next.js 15 + wagmi 2 + viem 2; `src/constants` ABI/địa chỉ, `src/hooks` gọi contract, `src/components`, `src/lib`). Hướng dẫn: `docs/04-van-hanh/chay-local-anvil.md`.
+  - Chưa có Indexer (danh sách escrow đọc event trực tiếp).
 - **Tech stack:** Solidity (Foundry / Hardhat) + OpenZeppelin + Next.js (Viem / Wagmi) + Indexer (Ponder / The Graph).
 - **Lệnh vận hành (Foundry):**
   - Build contracts: `forge build`
@@ -19,6 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Gas report: `forge test --gas-report`
   - Storage layout: `forge inspect EscrowVault storageLayout`
   - Format Solidity: `forge fmt`
+- **Lệnh Frontend (trong `frontend/`):** `npm install`, `npm run dev` (port 3000), `npm run build`, `npm run lint` (tsc), `npm run sync-abi` (sau khi contract đổi và `forge build`).
 
 ## Chính sách bắt buộc (luôn nạp)
 @.claude/skills/policies/write-guard.md

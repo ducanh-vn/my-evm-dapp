@@ -15,6 +15,9 @@ remappings = [
     "forge-std/=lib/forge-std/src/",
 ]
 
+# script/DeployLocalDemo.s.sol ghi địa chỉ Anvil cho giao diện; chỉ cho phép ghi đúng thư mục này.
+fs_permissions = [{ access = "read-write", path = "./frontend/src/constants/deployments" }]
+
 [fuzz]
 runs = 1000
 
