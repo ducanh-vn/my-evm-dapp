@@ -3,7 +3,7 @@
 - **Tên Contract:** `EscrowVault.sol`
 - **Chuẩn kế thừa:** `Ownable2Step`, `ReentrancyGuard`, `Pausable` (OpenZeppelin); dùng `SafeERC20`, `Math` (OpenZeppelin). **Không** dùng Proxy / UUPS.
 - **Trạng thái:** `Nháp`
-- **Solidity:** `pragma solidity ^0.8.20;` trong giai đoạn phát triển; ghim một phiên bản cố định khi bắt đầu audit.
+- **Solidity:** `pragma solidity 0.8.28;` (ghim cố định trong mọi file `.sol` của dự án ở `src/`, `test/`, `script/`; khớp `solc_version` trong `foundry.toml`; audit L-5).
 - **Mạng:** Base Sepolia (84532) → Base Mainnet (8453)
 - **Nghiệp vụ gốc:** [business-flows.md](../03-san-pham/business-flows.md)
 - **Mẫu tham chiếu:** `.claude/references/solidity-secure-pattern.sol`

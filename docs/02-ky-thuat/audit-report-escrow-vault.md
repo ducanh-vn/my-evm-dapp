@@ -6,7 +6,7 @@
 - **Ngày:** 2026-11-22
 - **Người thực hiện:** Claude (vai trò Lead Smart Contract Security Auditor theo `.claude/agents/security-auditor.md`)
 - **Loại audit:** Rà soát nội bộ trước audit chính thức. **Không thay thế** audit độc lập của bên thứ ba trước khi lên Mainnet.
-- **Trạng thái:** M-1 **đã sửa** (cả hai chiều), L-1 **đã sửa** (phần phí), L-3 **đã sửa**. Các mục L-2, L-4, L-5, L-6, G-1, G-2, G-3 chưa sửa.
+- **Trạng thái:** M-1 **đã sửa** (cả hai chiều), L-1 **đã sửa** (phần phí), L-3 **đã sửa**, L-5 **đã sửa**. Các mục L-2, L-4, L-6, G-1, G-2, G-3 chưa sửa.
 
 ---
 
@@ -17,7 +17,7 @@
 | `[CRITICAL]` | 0 |
 | `[HIGH]` | 0 |
 | `[MEDIUM]` | 1 (đã sửa) |
-| `[LOW/GAS]` | 9 (6 Low / Info, 3 Gas) — L-1, L-3 đã sửa |
+| `[LOW/GAS]` | 9 (6 Low / Info, 3 Gas) — L-1, L-3, L-5 đã sửa |
 
 Không tìm thấy lỗ hổng cho phép đánh cắp tiền, rút tiền hai lần, khóa tiền vĩnh viễn, hay leo thang quyền admin. Phát hiện quan trọng nhất (M-1) là **rủi ro logic nghiệp vụ** về mốc thời gian, không phải lỗi code: contract chạy đúng đặc tả, nhưng đặc tả hiện cho phép Seller bắt đầu 3 ngày khiếu nại trước khi giao hàng thật.
 
@@ -167,6 +167,8 @@ Seller mất hàng nếu đã giao. Seller **có** cơ hội từ chối: thông
 
 ### [LOW] L-5: `pragma` còn dùng `^0.8.20`
 
+> **Trạng thái: ĐÃ SỬA.** Mọi file `.sol` của dự án (`src/`, `test/`, `script/`; không gồm `lib/`) đều dùng `pragma solidity 0.8.28;`, khớp `solc_version = "0.8.28"` trong `foundry.toml`.
+
 **Vị trí:** `src/EscrowVault.sol:2`, `src/interfaces/IEscrowVault.sol:2`.
 
 **Mô tả:** Rule bảo mật yêu cầu ghim phiên bản cố định khi chuẩn bị audit. `foundry.toml` đã ghim `solc = 0.8.28`, nhưng người verify hoặc build bằng công cụ khác có thể dùng phiên bản khác.
@@ -240,5 +242,5 @@ Khi tính cả invariant test, trung vị thấp hơn vì có rất nhiều lệ
 
 1. Quyết định phương án cho M-1 và cập nhật `business-flows.md` cùng spec trước khi sửa code.
 2. Quyết định L-1 (thêm `maxFeeBps`), L-3 (`withdrawTo`), G-1 (`uint96`). Các thay đổi này làm đổi ABI, nên làm trước khi Frontend/Indexer bắt đầu.
-3. Ghim `pragma` (L-5), cài và chạy Slither, chạy `forge coverage`.
+3. ~~Ghim `pragma` (L-5)~~ (đã làm); cài và chạy Slither, chạy `forge coverage`.
 4. Audit độc lập bên thứ ba trước Base Mainnet.

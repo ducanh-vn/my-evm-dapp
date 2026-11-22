@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.28;
 
 import {BaseTest} from "./utils/BaseTest.sol";
 import {IEscrowVault} from "../src/interfaces/IEscrowVault.sol";

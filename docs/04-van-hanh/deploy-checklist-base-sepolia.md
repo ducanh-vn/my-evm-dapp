@@ -18,7 +18,7 @@
 - [ ] `forge coverage --report summary --no-match-coverage "(test|script)/"`. Lần chạy gần nhất cho `src/EscrowVault.sol`: Lines **100%** (169/169), Statements 98,64%, Branches 94,64%, Funcs 100%.
 - [ ] `forge fmt --check` sạch.
 - [ ] `forge inspect EscrowVault storageLayout`: struct `Escrow` vẫn 5 slot.
-- [ ] Đã xử lý hoặc chấp nhận các mục trong báo cáo audit. Trạng thái hiện tại: M-1, L-1, L-3 đã sửa; L-2, L-4, L-5, L-6, G-1, G-2, G-3 chưa sửa. **L-5 (ghim `pragma solidity 0.8.28;`) nên làm trước khi verify.**
+- [ ] Đã xử lý hoặc chấp nhận các mục trong báo cáo audit. Trạng thái hiện tại: M-1, L-1, L-3, L-5 đã sửa (`pragma solidity 0.8.28;` đã ghim); L-2, L-4, L-6, G-1, G-2, G-3 chưa sửa.
 - [ ] (Khuyến nghị) Cài và chạy Slither: `slither .`.
 
 ## 2. Tham số constructor
@@ -134,5 +134,5 @@ cast call <VAULT_ADDRESS> "paused()(bool)" --rpc-url "$BASE_SEPOLIA_RPC_URL"
 ## 8. Trước khi lên Base Mainnet (8453)
 
 - [ ] Audit độc lập bên thứ ba.
-- [ ] Ghim `pragma` (L-5), xem lại L-2 và G-1.
+- [ ] Xem lại L-2 và G-1 (L-5 đã ghim `pragma solidity 0.8.28;`).
 - [ ] Chạy lại toàn bộ checklist này với `EXPECTED_CHAIN_ID=8453` và địa chỉ token mainnet lấy từ nguồn chính thức của Circle/Tether.
