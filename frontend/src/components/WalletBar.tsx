@@ -18,7 +18,9 @@ export function WalletBar() {
   const { connect, connectors, isPending, error } = useConnect();
   const { disconnect } = useDisconnect();
   const { switchChain, isPending: isSwitching } = useSwitchChain();
-  const { chainId, deployment, isWrongNetwork } = useVaultDeployment();
+  const { deployment, isWrongNetwork } = useVaultDeployment();
+  // Dựa vào mạng thật của ví (không dùng giá trị dự phòng), để khi ví ở mạng lạ vẫn hiện đủ nút chuyển mạng.
+  const walletChainId = chain?.id;
 
   return (
     <header className="wallet-bar">
@@ -31,12 +33,12 @@ export function WalletBar() {
             {chain ? (NETWORK_NAME[chain.id] ?? chain.name) : "Mạng không hỗ trợ"}
           </span>
         )}
-        {isConnected && chainId !== BASE_SEPOLIA_CHAIN_ID && (
+        {isConnected && walletChainId !== BASE_SEPOLIA_CHAIN_ID && (
           <button className="btn small" disabled={isSwitching} onClick={() => switchChain({ chainId: BASE_SEPOLIA_CHAIN_ID })}>
             → Base Sepolia
           </button>
         )}
-        {isConnected && chainId !== LOCAL_CHAIN_ID && (
+        {isConnected && walletChainId !== LOCAL_CHAIN_ID && (
           <button className="btn small" disabled={isSwitching} onClick={() => switchChain({ chainId: LOCAL_CHAIN_ID })}>
             → Anvil
           </button>
