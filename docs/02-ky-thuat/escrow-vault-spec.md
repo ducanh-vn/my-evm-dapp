@@ -63,7 +63,7 @@ struct Escrow {
 ### 2.3. Biến storage
 | Tên biến | Kiểu dữ liệu | Visibility | Mô tả |
 | :--- | :--- | :--- | :--- |
-| `owner` | `address` (kế thừa `Ownable2Step`) | `public` | Ví Gnosis Safe Multisig quản trị. Riêng testnet Base Sepolia được phép là ví thường (EOA); script deploy chặn EOA trên mọi chain khác |
+| `owner` | `address` (kế thừa `Ownable2Step`) | `public` | Ví Gnosis Safe Multisig quản trị |
 | `_escrows` | `mapping(uint256 => Escrow)` | `internal` (đọc qua `getEscrow`) | Dữ liệu từng escrow |
 | `withdrawable` | `mapping(address user => mapping(address token => uint256))` | `public` | Số dư chờ rút theo người và tài sản |
 | `isTokenAllowed` | `mapping(address => bool)` | `public` | Whitelist ERC-20 (ETH luôn được phép, không nằm trong mapping) |
@@ -237,7 +237,7 @@ Viết bằng Foundry (`test/EscrowVault.t.sol`, `test/EscrowVault.invariant.t.s
 ## 5. Checklist trước khi deploy (tóm tắt)
 - [ ] Toàn bộ test trên pass; có báo cáo coverage.
 - [ ] Địa chỉ USDC/USDT cho từng mạng đã kiểm tra trên nguồn chính thức, ghi vào script deploy (không hardcode trong contract).
-- [ ] `initialOwner` là Gnosis Safe (Base Sepolia: chấp nhận EOA tạm thời, xem [checklist deploy](../04-van-hanh/deploy-checklist-base-sepolia.md) mục 2.1); `feeRecipient`, `defaultArbiter` đúng ví đã duyệt.
+- [ ] `initialOwner` là Gnosis Safe; `feeRecipient`, `defaultArbiter` đúng ví đã duyệt.
 - [ ] Verify source trên Basescan.
 - [ ] Ghi địa chỉ vào [contract-addresses.md](./contract-addresses.md).
 - [ ] Chi tiết đầy đủ: chạy `/gen-deploy-checklist` khi đã có mã nguồn.

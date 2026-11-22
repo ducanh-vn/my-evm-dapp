@@ -10,16 +10,13 @@ import {EscrowVault} from "../src/EscrowVault.sol";
  * @notice Script deploy EscrowVault. Mọi tham số đọc từ biến môi trường; không có private key,
  *         không hardcode địa chỉ token hay ví trong code.
  * @dev Biến môi trường (xem `.env.example`):
- *      - `INITIAL_OWNER`     (bắt buộc) owner của vault. Trên Base Sepolia (84532) được phép là ví thường (EOA);
- *                            trên MỌI chain khác (đặc biệt Base Mainnet 8453) BẮT BUỘC là contract (Gnosis Safe).
+ *      - `INITIAL_OWNER`     (bắt buộc) Gnosis Safe multisig, phải là contract trừ khi `ALLOW_EOA_OWNER=true`.
  *      - `FEE_RECIPIENT`     (bắt buộc) ví nhận phí.
  *      - `DEFAULT_ARBITER`   (bắt buộc) trọng tài mặc định.
  *      - `FEE_BPS`           (tùy chọn, mặc định 100) phí khởi tạo, ≤ 500.
  *      - `ALLOWED_TOKENS`    (tùy chọn) danh sách ERC-20 cách nhau bởi dấu phẩy; để trống = chỉ ETH.
  *      - `EXPECTED_CHAIN_ID` (tùy chọn, mặc định 84532 Base Sepolia) chặn deploy nhầm mạng.
- *
- *      Quy tắc owner: chỉ phụ thuộc `block.chainid` thực tế, KHÔNG có biến môi trường nào bỏ qua được.
- *      Biến cũ `ALLOW_EOA_OWNER` đã bị loại bỏ; nếu vẫn đặt, script chỉ in cảnh báo và bỏ qua nó.
+ *      - `ALLOW_EOA_OWNER`   (tùy chọn, mặc định false) chỉ dùng khi thử nghiệm local.
  *
  *      Ký giao dịch bằng `--account <keystore>` hoặc `--ledger`/`--trezor`; KHÔNG dùng `--private-key`.
  *      Mô phỏng (không gửi giao dịch):
@@ -36,6 +33,7 @@ contract DeployEscrowVault is Script {
         uint16 feeBps;
         address[] allowedTokens;
         uint256 expectedChainId;
+        bool allowEoaOwner;
     }
 
     error WrongChain(uint256 expected, uint256 actual);
@@ -66,11 +64,7 @@ contract DeployEscrowVault is Script {
         cfg.allowedTokens = bytes(rawTokens).length == 0 ? new address[](0) : vm.envAddress("ALLOWED_TOKENS", ",");
 
         cfg.expectedChainId = vm.envOr("EXPECTED_CHAIN_ID", BASE_SEPOLIA_CHAIN_ID);
-    }
-
-    /// @notice Owner là ví thường (EOA) chỉ được chấp nhận trên Base Sepolia (testnet).
-    function isEoaOwnerAllowed() public view returns (bool) {
-        return block.chainid == BASE_SEPOLIA_CHAIN_ID;
+        cfg.allowEoaOwner = vm.envOr("ALLOW_EOA_OWNER", false);
     }
 
     /// @notice Kiểm tra cấu hình trước khi deploy.
@@ -80,8 +74,7 @@ contract DeployEscrowVault is Script {
         if (cfg.feeRecipient == address(0)) revert ZeroAddressParam("FEE_RECIPIENT");
         if (cfg.defaultArbiter == address(0)) revert ZeroAddressParam("DEFAULT_ARBITER");
         if (cfg.feeBps > 500) revert FeeBpsTooHigh(cfg.feeBps);
-        // Không có cờ nào bỏ qua được kiểm tra này ngoài testnet Base Sepolia.
-        if (!isEoaOwnerAllowed() && cfg.initialOwner.code.length == 0) revert OwnerNotContract(cfg.initialOwner);
+        if (!cfg.allowEoaOwner && cfg.initialOwner.code.length == 0) revert OwnerNotContract(cfg.initialOwner);
 
         uint256 n = cfg.allowedTokens.length;
         for (uint256 i; i < n; ++i) {
@@ -123,11 +116,8 @@ contract DeployEscrowVault is Script {
         }
     }
 
-    function _logConfig(Config memory cfg) internal view {
+    function _logConfig(Config memory cfg) internal pure {
         console2.log("== EscrowVault deploy config ==");
-        if (vm.envOr("ALLOW_EOA_OWNER", false)) {
-            console2.log("CANH BAO: ALLOW_EOA_OWNER da bi loai bo va KHONG co tac dung; quy tac owner theo chainId.");
-        }
         console2.log("chainId (expected):", cfg.expectedChainId);
         console2.log("initialOwner      :", cfg.initialOwner);
         console2.log("feeRecipient      :", cfg.feeRecipient);
@@ -138,9 +128,6 @@ contract DeployEscrowVault is Script {
             console2.log("  token:", cfg.allowedTokens[i]);
         }
         if (cfg.allowedTokens.length == 0) console2.log("  (khong co ERC-20, chi ETH)");
-        if (cfg.initialOwner.code.length == 0) {
-            console2.log("CANH BAO: owner la vi thuong (EOA) - CHI chap nhan tren testnet Base Sepolia.");
-            console2.log("          Truoc mainnet bat buoc dung Gnosis Safe (transferOwnership -> acceptOwnership).");
-        }
+        if (cfg.allowEoaOwner) console2.log("CANH BAO: ALLOW_EOA_OWNER=true, owner co the la EOA");
     }
 }
