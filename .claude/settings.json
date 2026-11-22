@@ -1,0 +1,46 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(forge build*)",
+      "Bash(forge test*)",
+      "Bash(forge fmt*)",
+      "Bash(forge inspect*)",
+      "Bash(slither*)",
+      "Bash(npm run lint*)",
+      "Bash(npm test*)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(*secret*)",
+      "Read(*mnemonic*)",
+      "Read(*private*)",
+      "Read(*.pem)",
+      "Read(*.key)",
+      "Bash(rm -rf *)",
+      "Bash(git push --force*)",
+      "Bash(*--broadcast*)",
+      "Bash(*--private-key*)",
+      "Bash(*mainnet*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/post-edit-evm.js"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+# Mục lục tài liệu dự án Blockchain (`docs/`)
+
+Danh mục tài liệu được phân loại theo chuẩn dự án EVM:
+
+- [01-tong-quan](./01-tong-quan/README.md): Tầm nhìn, giới thiệu dự án, kiến trúc tổng thể.
+- [02-ky-thuat](./02-ky-thuat/README.md): Thiết kế kỹ thuật, ABI, Indexer Schema và [Danh sách địa chỉ Contract](./02-ky-thuat/contract-addresses.md).
+- [03-san-pham](./03-san-pham/README.md): Tokenomics, Business Flows, User Stories, PRD.
+- [04-van-hanh](./04-van-hanh/README.md): Hướng dẫn vận hành node, deploy, verify explorer.
+- [05-mau](./05-mau/README.md): Các file template chuẩn ([Đặc tả Smart Contract](./05-mau/mau-dac-ta-smart-contract.md), [Quy trình nghiệp vụ](./05-mau/mau-quy-trinh-nghiep-vu.md)).
+- [06-design](./06-design/README.md): Wireframe, UI/UX spec, Wallet UX.
+- [99-ghi-chu](./99-ghi-chu/README.md): Ghi chú họp, nháp ý tưởng, nghiên cứu EIP.
