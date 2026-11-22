@@ -3,12 +3,20 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository (EVM / Solidity Stack).
 
 ## Trạng thái dự án
-- **Mục tiêu dự án:** <TODO: Điền mô tả ngắn gọn mục tiêu dự án Blockchain / dApp>
+- **Tên dự án:** EscrowVault (Hệ thống ký quỹ thanh toán tự động P2P)
+- **Mục tiêu dự án:** Xây dựng giao thức ký quỹ phi tập trung cho phép người mua khóa tài sản (ERC20/ETH) vào hợp đồng thông minh và chỉ giải ngân cho người bán khi giao dịch hoàn tất hoặc được trọng tài xác nhận khi có tranh chấp.
+- **Mạng triển khai dự kiến:** Base Sepolia (Testnet, Chain ID 84532) và Base Mainnet (Chain ID 8453).
+- **Hiện trạng mã nguồn:** Đã khởi tạo Foundry (Foundry 1.10.0, solc 0.8.28 ghim trong `foundry.toml`, OpenZeppelin v5.7.0, forge-std v1.17.0 trong `lib/`).
+  - Contract: `src/EscrowVault.sol`, interface `src/interfaces/IEscrowVault.sol`.
+  - Test: `test/` (unit test theo luồng `EscrowVault.*.t.sol`, fuzz `EscrowVault.Fuzz.t.sol`, invariant `EscrowVault.invariant.t.sol` + `test/handlers/`, mock trong `test/mocks/`, setup chung `test/utils/BaseTest.sol`).
+  - Remapping: `@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/` (trong `foundry.toml`).
+  - Chưa có script deploy (`script/` trống), Frontend (`package.json`) hay Indexer.
 - **Tech stack:** Solidity (Foundry / Hardhat) + OpenZeppelin + Next.js (Viem / Wagmi) + Indexer (Ponder / The Graph).
-- **Lệnh vận hành (Foundry / Node):**
+- **Lệnh vận hành (Foundry):**
   - Build contracts: `forge build`
   - Run tests: `forge test -vvv`
   - Gas report: `forge test --gas-report`
+  - Storage layout: `forge inspect EscrowVault storageLayout`
   - Format Solidity: `forge fmt`
 
 ## Chính sách bắt buộc (luôn nạp)

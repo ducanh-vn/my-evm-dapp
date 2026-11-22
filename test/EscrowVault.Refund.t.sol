@@ -1,0 +1,111 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import {BaseTest} from "./utils/BaseTest.sol";
+import {IEscrowVault} from "../src/interfaces/IEscrowVault.sol";
+
+contract EscrowVaultRefundTest is BaseTest {
+    function _assertFullRefund(uint256 id) internal view {
+        assertEq(uint8(_status(id)), uint8(IEscrowVault.Status.Refunded));
+        assertEq(vault.withdrawable(buyer, address(usdc)), AMOUNT);
+        assertEq(vault.withdrawable(feeRecipient, address(usdc)), 0, "no fee");
+        assertEq(vault.withdrawable(seller, address(usdc)), 0);
+    }
+
+    function test_SellerRefund_WhenFunded() public {
+        uint256 id = _createUsdc();
+        vm.expectEmit(address(vault));
+        emit IEscrowVault.EscrowRefunded(id, seller, AMOUNT);
+        vm.prank(seller);
+        vault.refund(id);
+        _assertFullRefund(id);
+    }
+
+    function test_SellerRefund_WhenDelivered() public {
+        uint256 id = _createUsdc();
+        _deliver(id);
+        vm.prank(seller);
+        vault.refund(id);
+        _assertFullRefund(id);
+    }
+
+    function test_SellerRefund_WhenDisputed() public {
+        uint256 id = _createUsdc();
+        _dispute(id, buyer);
+        vm.prank(seller);
+        vault.refund(id);
+        _assertFullRefund(id);
+    }
+
+    function test_BuyerRefund_AfterDeliveryDeadline() public {
+        uint256 id = _createUsdc();
+        vm.warp(vault.getEscrow(id).deliveryDeadline + 1);
+        vm.prank(buyer);
+        vault.refund(id);
+        _assertFullRefund(id);
+
+        vm.prank(buyer);
+        vault.withdraw(address(usdc));
+        assertEq(usdc.balanceOf(address(vault)), 0);
+    }
+
+    function test_RevertWhen_BuyerRefundBeforeDeadline() public {
+        uint256 id = _createUsdc();
+        vm.warp(vault.getEscrow(id).deliveryDeadline);
+        vm.prank(buyer);
+        vm.expectRevert(IEscrowVault.DeadlineNotReached.selector);
+        vault.refund(id);
+    }
+
+    function test_RevertWhen_BuyerRefundWhenDelivered() public {
+        uint256 id = _createUsdc();
+        _deliver(id);
+        vm.warp(vault.getEscrow(id).deliveryDeadline + 1);
+        vm.prank(buyer);
+        _expectInvalidStatus(id, IEscrowVault.Status.Delivered);
+        vault.refund(id);
+    }
+
+    function test_RevertWhen_StrangerRefund() public {
+        uint256 id = _createUsdc();
+        vm.prank(stranger);
+        vm.expectRevert(IEscrowVault.Unauthorized.selector);
+        vault.refund(id);
+    }
+
+    function test_RevertWhen_RefundAfterRelease() public {
+        uint256 id = _createUsdc();
+        vm.prank(buyer);
+        vault.release(id);
+        vm.prank(seller);
+        _expectInvalidStatus(id, IEscrowVault.Status.Released);
+        vault.refund(id);
+    }
+
+    function test_RevertWhen_DoubleRefund() public {
+        uint256 id = _createUsdc();
+        vm.startPrank(seller);
+        vault.refund(id);
+        _expectInvalidStatus(id, IEscrowVault.Status.Refunded);
+        vault.refund(id);
+        vm.stopPrank();
+    }
+
+    function test_RevertWhen_EscrowNotFound() public {
+        vm.startPrank(buyer);
+        bytes memory err = abi.encodeWithSelector(IEscrowVault.EscrowNotFound.selector, 42);
+        vm.expectRevert(err);
+        vault.refund(42);
+        vm.expectRevert(err);
+        vault.release(42);
+        vm.expectRevert(err);
+        vault.raiseDispute(42);
+        vm.expectRevert(err);
+        vault.claimTimeoutRefund(42);
+        vm.expectRevert(err);
+        vault.markDelivered(42);
+        vm.expectRevert(err);
+        vault.resolveDispute(42, 0);
+        vm.stopPrank();
+    }
+}
