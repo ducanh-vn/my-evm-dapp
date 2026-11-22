@@ -32,6 +32,18 @@
 | `allowedTokens` | `ALLOWED_TOKENS` | Danh sách ERC-20 cách nhau bởi dấu phẩy. Script revert nếu có địa chỉ 0, địa chỉ không có code, hoặc trùng lặp |
 | (kiểm tra mạng) | `EXPECTED_CHAIN_ID` | Mặc định `84532`. Script revert `WrongChain` nếu RPC trỏ sai mạng |
 
+### Safe owner trên Base Sepolia (đã tạo)
+
+- Safe **"EscrowVault Admin"** trên Base Sepolia: `0x4dba37cB320b902B4F53E9BDA0f1377820baBA91`.
+- Đặt **`INITIAL_OWNER=0x4dba37cB320b902B4F53E9BDA0f1377820baBA91`** (script chỉ đọc tên biến `INITIAL_OWNER`, không đọc `ADMIN_SAFE_ADDRESS`). Không cần `ALLOW_EOA_OWNER` (để trống / `false`): địa chỉ Safe có code nên qua được kiểm tra `OwnerNotContract`.
+- Trước khi deploy, mở Safe này trên app.safe.global (mạng Base Sepolia) để chắc đúng địa chỉ và mạng. Có thể kiểm tra thêm bằng lệnh chỉ đọc:
+  ```bash
+  cast code 0x4dba37cB320b902B4F53E9BDA0f1377820baBA91 --rpc-url "$BASE_SEPOLIA_RPC_URL"   # phải khác 0x
+  cast call 0x4dba37cB320b902B4F53E9BDA0f1377820baBA91 "getThreshold()(uint256)" --rpc-url "$BASE_SEPOLIA_RPC_URL"
+  cast call 0x4dba37cB320b902B4F53E9BDA0f1377820baBA91 "getOwners()(address[])" --rpc-url "$BASE_SEPOLIA_RPC_URL"
+  ```
+- ⚠️ Safe này đang là **1/1** (một người ký, ngưỡng 1): thực chất vẫn là một key duy nhất. Chấp nhận được cho testnet. **Trước Base Mainnet**: dùng Safe có nhiều người ký (ví dụ 2/3 hoặc 3/5, các key ở thiết bị/người khác nhau), và nên cân nhắc Timelock cho các thay đổi tham số.
+
 ### Lấy địa chỉ USDC testnet
 - **Không** chép địa chỉ từ blog, chat hay nguồn không rõ; tài liệu này cố ý **không** ghi sẵn địa chỉ nào.
 - Lấy địa chỉ USDC trên Base Sepolia từ trang chính thức của Circle: tài liệu developer của Circle, mục địa chỉ hợp đồng USDC (USDC Contract Addresses → Testnet).
@@ -135,4 +147,5 @@ cast call <VAULT_ADDRESS> "paused()(bool)" --rpc-url "$BASE_SEPOLIA_RPC_URL"
 
 - [ ] Audit độc lập bên thứ ba.
 - [ ] Xem lại L-2 và G-1 (L-5 đã ghim `pragma solidity 0.8.28;`).
+- [ ] Owner mainnet là Safe nhiều người ký (không dùng Safe 1/1 của testnet).
 - [ ] Chạy lại toàn bộ checklist này với `EXPECTED_CHAIN_ID=8453` và địa chỉ token mainnet lấy từ nguồn chính thức của Circle/Tether.
