@@ -36,7 +36,6 @@ contract DeployEscrowVaultTest is Test {
         cfg.allowedTokens[0] = address(usdc);
         cfg.allowedTokens[1] = address(usdt);
         cfg.expectedChainId = 84_532;
-        cfg.allowEoaOwner = false;
     }
 
     function test_Run_FromEnv() public {
@@ -46,7 +45,6 @@ contract DeployEscrowVaultTest is Test {
         vm.setEnv("FEE_BPS", "150");
         vm.setEnv("ALLOWED_TOKENS", string.concat(vm.toString(address(usdc)), ",", vm.toString(address(usdt))));
         vm.setEnv("EXPECTED_CHAIN_ID", "84532");
-        vm.setEnv("ALLOW_EOA_OWNER", "false");
 
         DeployEscrowVault.Config memory cfg = script.readConfig();
         assertEq(cfg.initialOwner, safe);
@@ -69,6 +67,31 @@ contract DeployEscrowVaultTest is Test {
         vm.setEnv("FEE_BPS", "501");
         vm.expectRevert(abi.encodeWithSelector(DeployEscrowVault.FeeBpsTooHigh.selector, 501));
         script.readConfig();
+        vm.setEnv("FEE_BPS", "100");
+
+        // Owner EOA qua env: được trên Base Sepolia.
+        address eoa = makeAddr("metamaskOwner");
+        vm.setEnv("INITIAL_OWNER", vm.toString(eoa));
+        assertEq(script.run().owner(), eoa);
+
+        // Cờ cũ ALLOW_EOA_OWNER=true KHÔNG bỏ qua được kiểm tra trên mainnet hay chain khác.
+        vm.setEnv("ALLOW_EOA_OWNER", "true");
+        vm.chainId(8453);
+        vm.setEnv("EXPECTED_CHAIN_ID", "8453");
+        vm.expectRevert(abi.encodeWithSelector(DeployEscrowVault.OwnerNotContract.selector, eoa));
+        script.run();
+
+        vm.chainId(31_337);
+        vm.setEnv("EXPECTED_CHAIN_ID", "31337");
+        vm.expectRevert(abi.encodeWithSelector(DeployEscrowVault.OwnerNotContract.selector, eoa));
+        script.run();
+
+        // Owner là contract (Safe) qua env: được trên mainnet dù cờ cũ còn đặt.
+        vm.chainId(8453);
+        vm.setEnv("EXPECTED_CHAIN_ID", "8453");
+        vm.setEnv("INITIAL_OWNER", vm.toString(safe));
+        assertEq(script.run().owner(), safe);
+        vm.setEnv("ALLOW_EOA_OWNER", "false");
     }
 
     function test_Deploy_Succeeds() public {
@@ -127,15 +150,59 @@ contract DeployEscrowVaultTest is Test {
         script.deploy(cfg);
     }
 
-    function test_RevertWhen_OwnerIsEoa_UnlessAllowed() public {
-        DeployEscrowVault.Config memory cfg = _cfg();
+    /*//////////////////////////////////////////////////////////////
+              OWNER: EOA CHỈ TRÊN BASE SEPOLIA, SAFE Ở MỌI NƠI
+    //////////////////////////////////////////////////////////////*/
+
+    function _cfgOn(uint256 chainId, address owner_) internal returns (DeployEscrowVault.Config memory cfg) {
+        vm.chainId(chainId);
+        cfg = _cfg();
+        cfg.expectedChainId = chainId;
+        cfg.initialOwner = owner_;
+    }
+
+    function test_EoaOwner_AllowedOnBaseSepolia() public {
         address eoa = makeAddr("eoa");
-        cfg.initialOwner = eoa;
+        assertTrue(script.isEoaOwnerAllowed());
+        EscrowVault vault = script.deploy(_cfgOn(84_532, eoa));
+        assertEq(vault.owner(), eoa);
+        assertEq(vault.pendingOwner(), address(0));
+    }
+
+    function test_RevertWhen_EoaOwnerOnBaseMainnet() public {
+        address eoa = makeAddr("eoa");
+        DeployEscrowVault.Config memory cfg = _cfgOn(8453, eoa);
+        assertFalse(script.isEoaOwnerAllowed());
         vm.expectRevert(abi.encodeWithSelector(DeployEscrowVault.OwnerNotContract.selector, eoa));
         script.deploy(cfg);
+    }
 
-        cfg.allowEoaOwner = true;
-        assertEq(script.deploy(cfg).owner(), eoa);
+    function test_RevertWhen_EoaOwnerOnOtherChains() public {
+        address eoa = makeAddr("eoa");
+        uint256[4] memory chains = [uint256(1), 11_155_111, 31_337, 84_531];
+        for (uint256 i; i < chains.length; ++i) {
+            DeployEscrowVault.Config memory cfg = _cfgOn(chains[i], eoa);
+            vm.expectRevert(abi.encodeWithSelector(DeployEscrowVault.OwnerNotContract.selector, eoa));
+            script.deploy(cfg);
+        }
+    }
+
+    function test_ContractOwner_WorksOnBaseSepoliaAndMainnet() public {
+        assertEq(script.deploy(_cfgOn(84_532, safe)).owner(), safe);
+        assertEq(script.deploy(_cfgOn(8453, safe)).owner(), safe);
+    }
+
+    /// @dev Testnet: owner EOA sau này chuyển sang Safe bằng Ownable2Step (2 bước).
+    function test_EoaOwner_CanTransferToSafeTwoStep() public {
+        address eoa = makeAddr("eoa");
+        EscrowVault vault = script.deploy(_cfgOn(84_532, eoa));
+        vm.prank(eoa);
+        vault.transferOwnership(safe);
+        assertEq(vault.owner(), eoa, "chua doi cho toi khi Safe chap nhan");
+        assertEq(vault.pendingOwner(), safe);
+        vm.prank(safe);
+        vault.acceptOwnership();
+        assertEq(vault.owner(), safe);
     }
 
     function test_RevertWhen_TokenHasNoCode() public {
