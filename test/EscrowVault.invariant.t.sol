@@ -74,6 +74,11 @@ contract EscrowVaultInvariantTest is BaseTest {
         assertFalse(handler.ghostTimeoutClaimFailed());
     }
 
+    /// @dev (8) Audit M-1: Seller không bao giờ tự giải ngân trước max(disputeDeadline, deliveryDeadline).
+    function invariant_NoEarlySellerRelease() public view {
+        assertFalse(handler.ghostEarlySellerRelease());
+    }
+
     /// @dev (7) Arbiter của escrow không đổi sau khi tạo.
     function invariant_ArbiterImmutable() public view {
         uint256 n = handler.idsLength();

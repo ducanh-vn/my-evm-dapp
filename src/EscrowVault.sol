@@ -187,7 +187,8 @@ contract EscrowVault is IEscrowVault, Ownable2Step, ReentrancyGuard, Pausable {
             if (status != Status.Funded && status != Status.Delivered) revert InvalidStatus(id, status);
         } else if (msg.sender == e.seller) {
             _requireStatus(id, e, Status.Delivered);
-            if (block.timestamp <= e.disputeDeadline) revert DeadlineNotReached();
+            // Audit M-1: Seller chỉ tự giải ngân khi đã qua CẢ disputeDeadline VÀ deliveryDeadline.
+            if (block.timestamp <= _disputeWindowEnd(e)) revert DeadlineNotReached();
         } else {
             revert Unauthorized();
         }
@@ -231,7 +232,8 @@ contract EscrowVault is IEscrowVault, Ownable2Step, ReentrancyGuard, Pausable {
         if (status == Status.Funded) {
             if (block.timestamp > e.deliveryDeadline) revert DeadlinePassed();
         } else if (status == Status.Delivered) {
-            if (block.timestamp > e.disputeDeadline) revert DeadlinePassed();
+            // Cùng mốc với Seller tự giải ngân: không có khoảng trống, không chồng lấn.
+            if (block.timestamp > _disputeWindowEnd(e)) revert DeadlinePassed();
         } else {
             revert InvalidStatus(id, status);
         }
@@ -370,6 +372,14 @@ contract EscrowVault is IEscrowVault, Ownable2Step, ReentrancyGuard, Pausable {
     function _requireStatus(uint256 id, Escrow storage e, Status expected) private view {
         Status current = e.status;
         if (current != expected) revert InvalidStatus(id, current);
+    }
+
+    /**
+     * @dev Mốc kết thúc thời gian khiếu nại của escrow `Delivered`: `max(disputeDeadline, deliveryDeadline)`.
+     *      Buyer mở tranh chấp được khi `now <= mốc`; Seller tự giải ngân được khi `now > mốc` (audit M-1).
+     */
+    function _disputeWindowEnd(Escrow storage e) private view returns (uint256) {
+        return Math.max(e.disputeDeadline, e.deliveryDeadline);
     }
 
     /// @dev Ghi có toàn bộ `amount` cho Buyer, không phí, `status = Refunded`.

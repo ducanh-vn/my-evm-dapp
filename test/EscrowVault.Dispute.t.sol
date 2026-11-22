@@ -45,10 +45,43 @@ contract EscrowVaultDisputeTest is BaseTest {
     function test_RevertWhen_RaiseDisputeAfterDisputeWindow() public {
         uint256 id = _createUsdc();
         _deliver(id);
-        vm.warp(vault.getEscrow(id).disputeDeadline + 1);
+        vm.warp(_windowEnd(id) + 1);
         vm.prank(buyer);
         vm.expectRevert(IEscrowVault.DeadlinePassed.selector);
         vault.raiseDispute(id);
+    }
+
+    /// @dev Audit M-1: qua disputeDeadline nhưng chưa qua deliveryDeadline thì Buyer vẫn khiếu nại được.
+    function test_RaiseDispute_DeliveredAfterDisputeDeadlineBeforeDeliveryDeadline() public {
+        uint256 id = _createUsdc();
+        _deliver(id);
+        IEscrowVault.Escrow memory e = vault.getEscrow(id);
+        vm.warp(uint256(e.disputeDeadline) + 1);
+        _dispute(id, buyer);
+        assertEq(uint8(_status(id)), uint8(IEscrowVault.Status.Disputed));
+    }
+
+    /// @dev Biên chính xác: tại mốc chỉ khiếu nại được; tại mốc + 1 chỉ Seller tự giải ngân được.
+    function test_DeliveredWindowBoundary_NoGapNoOverlap() public {
+        uint256 a = _createUsdc();
+        uint256 b = _createUsdc();
+        _deliver(a);
+        _deliver(b);
+        uint256 end = _windowEnd(a);
+        assertEq(end, _windowEnd(b));
+
+        vm.warp(end);
+        vm.prank(seller);
+        vm.expectRevert(IEscrowVault.DeadlineNotReached.selector);
+        vault.release(a);
+        _dispute(a, buyer); // vẫn hợp lệ tại đúng mốc
+
+        vm.warp(end + 1);
+        vm.prank(buyer);
+        vm.expectRevert(IEscrowVault.DeadlinePassed.selector);
+        vault.raiseDispute(b);
+        vm.prank(seller);
+        vault.release(b); // hợp lệ ngay sau mốc
     }
 
     function test_RevertWhen_RaiseDisputeTwice() public {

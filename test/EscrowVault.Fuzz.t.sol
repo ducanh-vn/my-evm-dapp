@@ -51,7 +51,7 @@ contract EscrowVaultFuzzTest is BaseTest {
         uint256 id = _create(amount, fee, period);
         if (sellerPath) {
             _deliver(id);
-            vm.warp(vault.getEscrow(id).disputeDeadline + 1);
+            vm.warp(_windowEnd(id) + 1);
             vm.prank(seller);
         } else {
             vm.prank(buyer);
@@ -75,6 +75,40 @@ contract EscrowVaultFuzzTest is BaseTest {
         vault.claimTimeoutRefund(id);
         assertEq(vault.withdrawable(buyer, address(usdc)), amount);
         assertEq(vault.withdrawable(feeRecipient, address(usdc)), 0);
+    }
+
+    /// @dev Audit M-1: với mọi thời điểm giao hàng và mọi thời điểm gọi, đúng một trong hai hành động hợp lệ:
+    ///      Buyer mở tranh chấp (now <= max(dispute, delivery)) hoặc Seller tự giải ngân (now > mốc đó).
+    function testFuzz_DeliveredWindow_ExactlyOneOfDisputeOrSellerRelease(
+        uint48 period,
+        uint48 deliverAfter,
+        uint48 callAfter
+    ) public {
+        period = uint48(bound(period, 1 hours, 90 days));
+        uint256 id = _create(AMOUNT, FEE_BPS, period);
+        uint256 deliveryDeadline = vault.getEscrow(id).deliveryDeadline;
+
+        deliverAfter = uint48(bound(deliverAfter, 0, period));
+        vm.warp(vm.getBlockTimestamp() + deliverAfter);
+        _deliver(id);
+
+        uint256 end = _windowEnd(id);
+        assertGe(end, deliveryDeadline);
+        assertGe(end, vm.getBlockTimestamp() + 3 days);
+
+        callAfter = uint48(bound(callAfter, 0, 120 days));
+        uint256 target = vm.getBlockTimestamp() + callAfter;
+        vm.warp(target);
+
+        uint256 snap = vm.snapshotState();
+        vm.prank(buyer);
+        (bool disputeOk,) = address(vault).call(abi.encodeCall(vault.raiseDispute, (id)));
+        vm.revertToState(snap);
+        vm.prank(seller);
+        (bool releaseOk,) = address(vault).call(abi.encodeCall(vault.release, (id)));
+
+        assertTrue(disputeOk != releaseOk, "exactly one allowed");
+        assertEq(disputeOk, target <= end);
     }
 
     function testFuzz_ArbitrationDeadlineBoundary(uint48 offset) public {

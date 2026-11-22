@@ -51,13 +51,83 @@ contract EscrowVaultReleaseTest is BaseTest {
         assertEq(uint8(_status(id)), uint8(IEscrowVault.Status.Released));
     }
 
-    function test_SellerAutoReleaseAfterDisputeWindow() public {
+    function test_SellerAutoReleaseAfterBothDeadlines() public {
         uint256 id = _createUsdc();
         _deliver(id);
-        vm.warp(vault.getEscrow(id).disputeDeadline + 1);
+        vm.warp(_windowEnd(id) + 1);
         vm.prank(seller);
         vault.release(id);
         assertEq(vault.withdrawable(seller, address(usdc)), AMOUNT - _fee(AMOUNT));
+    }
+
+    /*//////////////////////////////////////////////////////////////
+              AUDIT M-1: CHỜ CẢ disputeDeadline VÀ deliveryDeadline
+    //////////////////////////////////////////////////////////////*/
+
+    /// @dev Giao sớm (deliveryDeadline muộn hơn disputeDeadline): qua disputeDeadline vẫn chưa được rút.
+    function test_RevertWhen_SellerReleaseAfterDisputeButBeforeDeliveryDeadline() public {
+        uint256 id = _createUsdc(); // PERIOD = 7 ngày
+        _deliver(id); // disputeDeadline = now + 3 ngày < deliveryDeadline
+        IEscrowVault.Escrow memory e = vault.getEscrow(id);
+        assertLt(e.disputeDeadline, e.deliveryDeadline);
+
+        vm.warp(uint256(e.disputeDeadline) + 1);
+        vm.prank(seller);
+        vm.expectRevert(IEscrowVault.DeadlineNotReached.selector);
+        vault.release(id);
+
+        vm.warp(e.deliveryDeadline);
+        vm.prank(seller);
+        vm.expectRevert(IEscrowVault.DeadlineNotReached.selector);
+        vault.release(id);
+
+        vm.warp(uint256(e.deliveryDeadline) + 1);
+        vm.prank(seller);
+        vault.release(id);
+        assertEq(uint8(_status(id)), uint8(IEscrowVault.Status.Released));
+    }
+
+    /// @dev Giao muộn (disputeDeadline muộn hơn deliveryDeadline): mốc quyết định là disputeDeadline.
+    function test_SellerRelease_LateDelivery_UsesDisputeDeadline() public {
+        uint256 id = _createUsdc();
+        vm.warp(uint256(vault.getEscrow(id).deliveryDeadline) - 1 hours);
+        _deliver(id);
+        IEscrowVault.Escrow memory e = vault.getEscrow(id);
+        assertGt(e.disputeDeadline, e.deliveryDeadline);
+
+        vm.warp(e.disputeDeadline);
+        vm.prank(seller);
+        vm.expectRevert(IEscrowVault.DeadlineNotReached.selector);
+        vault.release(id);
+
+        vm.warp(uint256(e.disputeDeadline) + 1);
+        vm.prank(seller);
+        vault.release(id);
+    }
+
+    /// @dev Kịch bản M-1 cũ: Seller khai giao ngay lúc tạo, Buyer đặt hạn 30 ngày → không rút được sau 3 ngày.
+    function test_M1_PrematureMarkDeliveredNoLongerDrains() public {
+        vm.prank(buyer);
+        uint256 id = vault.createEscrow(seller, address(usdc), AMOUNT, 30 days, arbiter);
+        _deliver(id);
+        vm.warp(vm.getBlockTimestamp() + 3 days + 1);
+
+        vm.prank(seller);
+        vm.expectRevert(IEscrowVault.DeadlineNotReached.selector);
+        vault.release(id);
+
+        // Buyer vẫn còn quyền khiếu nại tới hết deliveryDeadline.
+        _dispute(id, buyer);
+        assertEq(uint8(_status(id)), uint8(IEscrowVault.Status.Disputed));
+    }
+
+    /// @dev Buyer vẫn release được bất cứ lúc nào trước tranh chấp, kể cả trước cả hai mốc.
+    function test_BuyerReleaseBeforeBothDeadlines() public {
+        uint256 id = _createUsdc();
+        _deliver(id);
+        vm.prank(buyer);
+        vault.release(id);
+        assertEq(uint8(_status(id)), uint8(IEscrowVault.Status.Released));
     }
 
     function test_FeeRecipientReadAtSettlement() public {
@@ -131,7 +201,7 @@ contract EscrowVaultReleaseTest is BaseTest {
     function test_RevertWhen_SellerReleaseBeforeWindowEnds() public {
         uint256 id = _createUsdc();
         _deliver(id);
-        vm.warp(vault.getEscrow(id).disputeDeadline);
+        vm.warp(_windowEnd(id));
         vm.prank(seller);
         vm.expectRevert(IEscrowVault.DeadlineNotReached.selector);
         vault.release(id);

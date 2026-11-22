@@ -6,7 +6,7 @@
 - **Ngày:** 2026-11-22
 - **Người thực hiện:** Claude (vai trò Lead Smart Contract Security Auditor theo `.claude/agents/security-auditor.md`)
 - **Loại audit:** Rà soát nội bộ trước audit chính thức. **Không thay thế** audit độc lập của bên thứ ba trước khi lên Mainnet.
-- **Trạng thái:** Chưa sửa code. Chờ chủ dự án duyệt từng mục.
+- **Trạng thái:** M-1 **đã sửa** (phần chính, xem mục M-1). Các mục L/G còn lại chưa sửa, chờ chủ dự án quyết định.
 
 ---
 
@@ -16,7 +16,7 @@
 | :--- | :--- |
 | `[CRITICAL]` | 0 |
 | `[HIGH]` | 0 |
-| `[MEDIUM]` | 1 |
+| `[MEDIUM]` | 1 (đã sửa) |
 | `[LOW/GAS]` | 9 (6 Low / Info, 3 Gas) |
 
 Không tìm thấy lỗ hổng cho phép đánh cắp tiền, rút tiền hai lần, khóa tiền vĩnh viễn, hay leo thang quyền admin. Phát hiện quan trọng nhất (M-1) là **rủi ro logic nghiệp vụ** về mốc thời gian, không phải lỗi code: contract chạy đúng đặc tả, nhưng đặc tả hiện cho phép Seller bắt đầu 3 ngày khiếu nại trước khi giao hàng thật.
@@ -51,6 +51,14 @@ Không tìm thấy lỗ hổng cho phép đánh cắp tiền, rút tiền hai l�
 ## 2. Chi tiết phát hiện
 
 ### [MEDIUM] M-1: Seller có thể bắt đầu 3 ngày khiếu nại trước khi giao hàng thật; ngược lại Buyer có thể đặt thời hạn giao hàng quá ngắn
+
+> **Trạng thái: ĐÃ SỬA (phần chính)** trên nhánh `feat/escrow-vault-mvp`. Chủ dự án chọn phương án 1, "Chờ cả hai hạn":
+> - Seller tự `release` chỉ khi `now > max(disputeDeadline, deliveryDeadline)`.
+> - Buyer `raiseDispute` ở `Delivered` khi `now ≤ max(disputeDeadline, deliveryDeadline)` (cùng một mốc, không có khoảng trống hay chồng lấn).
+> - Buyer `release` không đổi.
+> - Code: hàm nội bộ `_disputeWindowEnd` trong `src/EscrowVault.sol`, dùng ở `release` và `raiseDispute`.
+> - Test mới: Seller revert khi qua `disputeDeadline` nhưng chưa qua `deliveryDeadline`; trường hợp giao muộn; biên đúng mốc / mốc + 1; tái hiện kịch bản M-1 cũ (giờ revert); fuzz "đúng một trong hai hành động hợp lệ"; invariant số 8 (`invariant_NoEarlySellerRelease`).
+> - **Chưa xử lý:** chiều ngược lại (Buyer đặt `deliveryPeriod` quá ngắn rồi refund sau khi Seller đã gửi hàng). Vẫn dựa vào Frontend cảnh báo Seller gọi `markDelivered` trước khi gửi hàng, và Indexer gửi thông báo (phương án 3–4 bên dưới).
 
 **Vị trí:** `markDelivered` (dòng 166–179), `release` nhánh Seller (dòng 188–190), `refund` nhánh Buyer (dòng 215–217).
 

@@ -24,6 +24,7 @@ contract EscrowVaultHandler is Test {
     mapping(uint256 id => IEscrowVault.Status) public ghostTerminal;
     bool public ghostTimeoutClaimFailed;
     bool public ghostAdminReducedFunds;
+    bool public ghostEarlySellerRelease;
 
     mapping(bytes32 => uint256) public calls;
 
@@ -159,9 +160,16 @@ contract EscrowVaultHandler is Test {
     function release(uint256 idSeed, uint256 callerSeed) external {
         uint256 id = _pickId(idSeed);
         if (id == 0) return;
-        vm.prank(_caller(id, callerSeed, Role.Buyer));
+        IEscrowVault.Escrow memory e = vault.getEscrow(id);
+        address caller = _caller(id, callerSeed, Role.Buyer);
+        vm.prank(caller);
         try vault.release(id) {
             calls["release"]++;
+            // Audit M-1: Seller tự giải ngân chỉ hợp lệ khi đã qua cả disputeDeadline và deliveryDeadline.
+            if (caller == e.seller) {
+                uint256 end = e.disputeDeadline > e.deliveryDeadline ? e.disputeDeadline : e.deliveryDeadline;
+                if (vm.getBlockTimestamp() <= end) ghostEarlySellerRelease = true;
+            }
         } catch {}
         _recordTerminal(id);
     }

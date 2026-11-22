@@ -33,7 +33,7 @@ Người mua và người bán không tin nhau vẫn giao dịch được: ngư�
 | Thời điểm áp phí | Chốt theo phí hiện hành **tại lúc tạo escrow** | Admin đổi phí không ảnh hưởng escrow đang mở |
 | Hoàn tiền 100% cho Buyer | **Không thu phí** | Áp dụng cho hủy, hoàn tiền và phán quyết 100% cho Buyer |
 | Thời hạn giao hàng | Buyer tự đặt, **tối thiểu 1 giờ, tối đa 90 ngày** | Tính từ lúc tạo escrow |
-| Thời gian khiếu nại (`DISPUTE_WINDOW`) | **3 ngày** sau khi Seller báo đã giao hàng | Hết hạn mà không khiếu nại thì Seller tự giải ngân được |
+| Thời gian khiếu nại (`DISPUTE_WINDOW`) | **3 ngày** sau khi Seller báo đã giao hàng, **nhưng không kết thúc trước `deliveryDeadline`** | Mốc kết thúc = `max(disputeDeadline, deliveryDeadline)`. Hết mốc mà không khiếu nại thì Seller tự giải ngân được (sửa theo audit M-1) |
 | Trọng tài | Chỉ định lúc tạo escrow; để trống thì dùng **trọng tài mặc định của hệ thống** | Địa chỉ trọng tài được lưu cố định vào escrow |
 | Thời hạn phân xử (`ARBITRATION_TIMEOUT`) | **14 ngày** kể từ lúc mở tranh chấp | Quá hạn mà trọng tài chưa phán quyết: Buyer gọi `claimTimeoutRefund` lấy lại 100% tiền gốc, không phí |
 | Tỷ lệ phân xử | Trọng tài chọn phần trăm cho Buyer từ 0% đến 100% (đơn vị bps) | Phần còn lại cho Seller, trừ phí trên phần của Seller |
@@ -47,7 +47,7 @@ Người mua và người bán không tin nhau vẫn giao dịch được: ngư�
 | Trạng thái | Ý nghĩa |
 | :--- | :--- |
 | `Funded` | Buyer đã tạo escrow và tiền đã nằm trong contract |
-| `Delivered` | Seller báo đã giao hàng; bắt đầu 3 ngày khiếu nại của Buyer |
+| `Delivered` | Seller báo đã giao hàng; Buyer được khiếu nại tới `max(disputeDeadline, deliveryDeadline)` |
 | `Disputed` | Một bên mở tranh chấp; tiền bị khóa chờ Arbiter |
 | `Released` | Tiền đã ghi có cho Seller (kết thúc) |
 | `Refunded` | Toàn bộ tiền đã ghi có lại cho Buyer (kết thúc) |
@@ -59,11 +59,11 @@ Người mua và người bán không tin nhau vẫn giao dịch được: ngư�
 | — | `Funded` | Buyer | Token là ETH hoặc nằm trong whitelist, `amount > 0`, Seller hợp lệ và khác Buyer, thời hạn trong khoảng 1 giờ – 90 ngày, Arbiter khác Buyer/Seller, contract không `paused` |
 | `Funded` | `Delivered` | Seller | Chưa qua `deliveryDeadline` |
 | `Funded` / `Delivered` | `Released` | Buyer | Bất kỳ lúc nào khi chưa có tranh chấp |
-| `Delivered` | `Released` | Seller | Đã qua `disputeDeadline` (3 ngày) mà không có tranh chấp |
+| `Delivered` | `Released` | Seller | Đã qua **cả** `disputeDeadline` (3 ngày sau khi báo giao) **và** `deliveryDeadline` mà không có tranh chấp |
 | `Funded` | `Refunded` | Buyer | Đã qua `deliveryDeadline` mà Seller chưa báo giao hàng |
 | `Funded` / `Delivered` / `Disputed` | `Refunded` | Seller | Seller tự nguyện hoàn toàn bộ tiền |
 | `Funded` | `Disputed` | Buyer hoặc Seller | Chưa qua `deliveryDeadline` |
-| `Delivered` | `Disputed` | Buyer hoặc Seller | Chưa qua `disputeDeadline` |
+| `Delivered` | `Disputed` | Buyer hoặc Seller | Chưa qua `max(disputeDeadline, deliveryDeadline)` |
 | `Disputed` | `Resolved` | Arbiter của escrow | Chưa qua `arbitrationDeadline` (14 ngày từ lúc mở tranh chấp); tỷ lệ cho Buyer trong khoảng 0 – 10.000 bps |
 | `Disputed` | `Refunded` | Buyer (`claimTimeoutRefund`) | Đã qua `arbitrationDeadline` mà Arbiter chưa phán quyết |
 
@@ -72,7 +72,7 @@ Mọi trạng thái kết thúc (`Released`, `Refunded`, `Resolved`) là bất b
 Escrow ở `Disputed` kết thúc khi Arbiter phân xử trong 14 ngày, khi Seller tự nguyện hoàn tiền 100%, hoặc khi Buyer gọi `claimTimeoutRefund` sau 14 ngày. Tiền không bao giờ bị kẹt vĩnh viễn.
 
 ```
-            markDelivered              (qua disputeDeadline, Seller gọi)
+            markDelivered      (qua max(disputeDeadline, deliveryDeadline), Seller gọi)
  Funded ─────────────────▶ Delivered ─────────────────────────▶ Released
    │  ╲ release (Buyer)        │  ╲ release (Buyer) ───────────▶ Released
    │   ╲                       │
@@ -95,9 +95,12 @@ Escrow ở `Disputed` kết thúc khi Arbiter phân xử trong 14 ngày, khi Sel
 
 ### 4.2. Luồng B — Giao hàng và giải ngân (Happy Path)
 1. **Off-chain:** Seller giao hàng hoặc dịch vụ ngoài chuỗi.
-2. **Smart Contract:** Seller gọi `markDelivered(escrowId)` → trạng thái `Delivered`, ghi `disputeDeadline = thời điểm hiện tại + 3 ngày`. Phát `EscrowDelivered`.
+2. **Smart Contract:** Seller gọi `markDelivered(escrowId)` → trạng thái `Delivered`, ghi `disputeDeadline = thời điểm hiện tại + 3 ngày`. Phát `EscrowDelivered`. Buyer được khiếu nại tới `max(disputeDeadline, deliveryDeadline)`.
 3. **Smart Contract:** Buyer gọi `release(escrowId)` → trạng thái `Released`, ghi có `amount − phí` cho Seller và phí cho ví nhận phí. Phát `EscrowReleased`.
-4. **Tự động giải ngân:** Nếu Buyer không khiếu nại trong 3 ngày, Seller gọi `release(escrowId)` để tự nhận tiền, tránh bị kẹt vốn.
+4. **Tự động giải ngân:** Nếu Buyer không khiếu nại cho tới khi qua **cả** `disputeDeadline` **và** `deliveryDeadline`, Seller gọi `release(escrowId)` để tự nhận tiền, tránh bị kẹt vốn.
+   - Lý do (audit M-1): nếu chỉ chờ 3 ngày, Seller có thể báo "đã giao" ngay lúc tạo escrow khi chưa giao gì, và tự rút tiền sau 3 ngày trong khi Buyer vẫn nghĩ còn nhiều ngày nữa mới tới hạn giao hàng.
+   - Ví dụ: hạn giao 30 ngày, Seller báo giao ở ngày 2 → Buyer khiếu nại được tới ngày 30, Seller tự rút từ ngày 30 + 1 giây. Seller báo giao ở ngày 29 → mốc là ngày 32.
+   - Buyer vẫn `release` sớm được bất cứ lúc nào nếu hài lòng.
 5. **Indexer / Frontend:** Cập nhật trạng thái, hiển thị số tiền Seller có thể rút.
 
 ### 4.3. Luồng C — Hoàn tiền (không thu phí)
@@ -184,7 +187,8 @@ Contract **không** có hàm `view` trả về danh sách escrow của một ng�
 - [ ] Tách rõ trạng thái chờ ký ví (`isPending`) và chờ xác nhận block (`isConfirming`); xử lý `UserRejectedRequestError` và revert có Custom Error dễ hiểu.
 - [ ] Cảnh báo khi người dùng đang ở sai mạng (không phải Base Sepolia / Base).
 - [ ] Hiển thị phí 1% và số tiền Seller thực nhận trước khi Buyer ký.
-- [ ] Hiển thị đếm ngược `deliveryDeadline` và 3 ngày khiếu nại.
+- [ ] Hiển thị đếm ngược `deliveryDeadline` và mốc hết khiếu nại `max(disputeDeadline, deliveryDeadline)`.
+- [ ] Gửi thông báo cho Buyer ngay khi có `EscrowDelivered` (qua Indexer).
 
 ### Indexer
 - [ ] Indexer đồng bộ dữ liệu chính xác sau khi giao dịch đạt finality.

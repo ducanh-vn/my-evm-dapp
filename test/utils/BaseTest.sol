@@ -69,6 +69,12 @@ abstract contract BaseTest is Test {
         return vault.getEscrow(id).status;
     }
 
+    /// @dev Mốc Seller được tự giải ngân / Buyer hết quyền khiếu nại: max(disputeDeadline, deliveryDeadline).
+    function _windowEnd(uint256 id) internal view returns (uint256) {
+        IEscrowVault.Escrow memory e = vault.getEscrow(id);
+        return e.disputeDeadline > e.deliveryDeadline ? e.disputeDeadline : e.deliveryDeadline;
+    }
+
     function _fee(uint256 amount) internal pure returns (uint256) {
         return amount * FEE_BPS / 10_000;
     }

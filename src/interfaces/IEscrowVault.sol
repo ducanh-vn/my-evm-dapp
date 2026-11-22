@@ -137,14 +137,16 @@ interface IEscrowVault {
         returns (uint256 id);
 
     /**
-     * @notice Seller báo đã giao hàng; mở 3 ngày khiếu nại cho Buyer.
+     * @notice Seller báo đã giao hàng; mở thời gian khiếu nại cho Buyer, kéo dài tới
+     *         `max(now + 3 ngày, deliveryDeadline)`.
      * @param id Mã escrow.
      */
     function markDelivered(uint256 id) external;
 
     /**
      * @notice Giải ngân cho Seller (trừ phí). Buyer gọi khi `Funded`/`Delivered`;
-     *         Seller gọi khi `Delivered` và đã qua `disputeDeadline`.
+     *         Seller gọi khi `Delivered` và đã qua cả `disputeDeadline` lẫn `deliveryDeadline`
+     *         (tức `block.timestamp > max(disputeDeadline, deliveryDeadline)`).
      * @param id Mã escrow.
      */
     function release(uint256 id) external;
@@ -157,7 +159,9 @@ interface IEscrowVault {
     function refund(uint256 id) external;
 
     /**
-     * @notice Buyer hoặc Seller mở tranh chấp trong thời hạn cho phép.
+     * @notice Buyer hoặc Seller mở tranh chấp trong thời hạn cho phép:
+     *         `Funded` và `now <= deliveryDeadline`, hoặc `Delivered` và
+     *         `now <= max(disputeDeadline, deliveryDeadline)`.
      * @param id Mã escrow.
      */
     function raiseDispute(uint256 id) external;
