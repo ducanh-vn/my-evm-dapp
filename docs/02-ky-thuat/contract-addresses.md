@@ -15,7 +15,7 @@
 | Mã nguồn | nhánh `feat/escrow-vault-mvp`, commit `137b285` (solc 0.8.28, optimizer 200 runs, EVM `cancun`) |
 | Gas sử dụng | 2.135.915 |
 | Deployer | `0xfc14501bDC2C4377EC81fF854906AE48B72ce053` (không có quyền gì sau deploy) |
-| Verify Basescan | Chưa xác nhận (cần kiểm tra tab "Contract" trên Basescan) |
+| Verify Basescan | ✅ "Source Code Verified — Exact Match" (solc v0.8.28, optimizer 200 runs, EVM cancun), xác nhận ngày 2026-11-22 |
 
 ### Tham số constructor (đã đọc lại trên chain sau deploy)
 | Tham số | Giá trị |
